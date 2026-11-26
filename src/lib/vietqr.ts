@@ -42,9 +42,9 @@ export function buildVietQRUrl(options: BuildVietQROptions): string {
   );
   const accountName =
     sanitizeText(
-      options.accountName ?? process.env.NEXT_PUBLIC_VIETQR_ACCOUNT_NAME ?? 'QUAN CA PHE DEMO',
+      options.accountName ?? process.env.NEXT_PUBLIC_VIETQR_ACCOUNT_NAME ?? 'TIEM CA PHE MOC',
       50
-    ) || 'QUAN CA PHE DEMO';
+    ) || 'TIEM CA PHE MOC';
   const addInfo = sanitizeText(options.addInfo, 50) || 'THANH TOAN DON HANG';
   const template = options.template ?? 'compact2';
 

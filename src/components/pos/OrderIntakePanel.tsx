@@ -29,8 +29,10 @@ import {
 } from '@/lib/demo-presets';
 import type { NormalizedOrderDraft, NormalizedOrderItem } from '@/lib/orders';
 import { cleanCustomerDisplay } from '@/lib/utils';
-import { formatVND } from '@/lib/vietqr';
+import { buildVietQRUrl, formatVND } from '@/lib/vietqr';
 import type { OrderItemRow, OrderRow, PaymentMethod } from '@/types/database';
+
+const MERCHANT_BANK_LABEL = `${(process.env.NEXT_PUBLIC_VIETQR_BANK_ID || 'MB').trim()} • ${(process.env.NEXT_PUBLIC_VIETQR_ACCOUNT_NO || '0123456789').trim()}`;
 
 export interface StoreOrderWithItems extends OrderRow {
   items: OrderItemRow[];
@@ -38,6 +40,7 @@ export interface StoreOrderWithItems extends OrderRow {
 
 export interface OrderIntakeHandle {
   runDemoPreset: (mode: 'chat' | 'handwritten') => void;
+  resetView: () => void;
 }
 
 interface OrderIntakePanelProps {
@@ -92,6 +95,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
 
     const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const demoLoadingRef = useRef(false);
 
     async function runParseOrder(opts?: {
       mode?: 'chat' | 'handwritten' | 'voice';
@@ -143,12 +147,14 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
 
     useImperativeHandle(ref, () => ({
       runDemoPreset(mode) {
+        if (isParsing || demoLoadingRef.current) return;
         if (mode === 'chat') {
           const presetText = SLANG_CHAT_PRESETS[0].rawMessage;
           setInputMode('chat');
           setTextInput(presetText);
           void runParseOrder({ mode: 'chat', textOverride: presetText });
         } else {
+          demoLoadingRef.current = true;
           setInputMode('handwritten');
           void (async () => {
             try {
@@ -167,9 +173,22 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
               });
             } catch (err) {
               toast.error(err instanceof Error ? err.message : 'Không tải được ảnh mẫu Bàn 2.');
+            } finally {
+              demoLoadingRef.current = false;
             }
           })();
         }
+      },
+      resetView() {
+        setDraft(null);
+        setReasoningVi('');
+        setPreviewVietqrUrl(null);
+        setSavedOrderResult(null);
+        setImagePreviewUrl(null);
+        setImagePayload(null);
+        setInputMode('chat');
+        setTextInput(SLANG_CHAT_PRESETS[0].rawMessage);
+        setCopiedCode(false);
       },
     }));
 
@@ -222,6 +241,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
         toast.info('Đơn hàng cần giữ lại ít nhất 1 món.');
         return;
       }
+      setSavedOrderResult(null);
       setDraft(recalculateDraft({ ...draft, items: updatedItems }));
     }
 
@@ -234,6 +254,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
           .reduce((s, i) => s + i.lineTotalVnd, 0);
         base.cashAmountVnd = cashItemsTotal > 0 ? cashItemsTotal : Math.round(base.totalVnd / 2);
       }
+      setSavedOrderResult(null);
       setDraft(recalculateDraft(base));
     }
 
@@ -340,17 +361,39 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
       recognition.start();
     }
 
-    const activeQrUrl = savedOrderResult?.vietqrUrl ?? previewVietqrUrl;
-    const activeQrOrder = savedOrderResult?.order;
-    const qrAmountVnd = activeQrOrder
-      ? activeQrOrder.transfer_amount_vnd > 0
-        ? activeQrOrder.transfer_amount_vnd
-        : activeQrOrder.total_vnd
-      : draft
-        ? draft.transferAmountVnd > 0
-          ? draft.transferAmountVnd
-          : draft.totalVnd
-        : 0;
+    const activeQrOrder = savedOrderResult?.order ?? null;
+    const isCashOnly = activeQrOrder
+      ? activeQrOrder.payment_method === 'cash'
+      : draft?.paymentMethod === 'cash';
+
+    const qrAmountVnd = isCashOnly
+      ? 0
+      : activeQrOrder
+        ? activeQrOrder.transfer_amount_vnd > 0
+          ? activeQrOrder.transfer_amount_vnd
+          : activeQrOrder.total_vnd
+        : draft
+          ? draft.paymentMethod === 'split'
+            ? draft.transferAmountVnd
+            : draft.totalVnd
+          : 0;
+
+    const livePreviewQrUrl = (() => {
+      if (!draft || isCashOnly || qrAmountVnd <= 0) return null;
+      try {
+        return buildVietQRUrl({
+          amount: qrAmountVnd,
+          addInfo: `TAM TINH ${draft.tableOrChannel || 'DON MOI'}`.slice(0, 40),
+        });
+      } catch {
+        return previewVietqrUrl;
+      }
+    })();
+
+    const activeQrUrl = isCashOnly ? null : (savedOrderResult?.vietqrUrl ?? livePreviewQrUrl);
+    const cashCollectVnd = activeQrOrder
+      ? activeQrOrder.cash_amount_vnd || activeQrOrder.total_vnd
+      : draft?.totalVnd ?? 0;
 
     const saveCtaLabel =
       draft?.paymentMethod === 'debt'
@@ -744,14 +787,15 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                     min={0}
                     step={1000}
                     value={draft.discountVnd}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      setSavedOrderResult(null);
                       setDraft(
                         recalculateDraft({
                           ...draft,
                           discountVnd: Math.max(0, Number(e.target.value) || 0),
                         })
-                      )
-                    }
+                      );
+                    }}
                     className="mt-1 h-9 bg-white font-mono tabular-nums rounded-md"
                   />
                 </div>
@@ -766,14 +810,15 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                       min={0}
                       step={1000}
                       value={draft.cashAmountVnd}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        setSavedOrderResult(null);
                         setDraft(
                           recalculateDraft({
                             ...draft,
                             cashAmountVnd: Math.max(0, Number(e.target.value) || 0),
                           })
-                        )
-                      }
+                        );
+                      }}
                       className="mt-1 h-9 bg-white font-mono tabular-nums rounded-md"
                     />
                   </div>
@@ -875,13 +920,15 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                 <div className="px-4 py-3 flex items-center justify-between text-xs border-b border-dashed border-border bg-white/70">
                   <div>
                     <p className="font-semibold text-foreground">TIỆM CÀ PHÊ MỘC</p>
-                    <p className="text-[11px] text-muted-foreground font-mono">MB Bank • 0123456789</p>
+                    <p className="text-[11px] text-muted-foreground font-mono">
+                      {MERCHANT_BANK_LABEL}
+                    </p>
                   </div>
                   {activeQrOrder && (
                     <button
                       type="button"
                       onClick={() => void handleCopyOrderCode(activeQrOrder.order_code)}
-                      className="min-h-[32px] px-2.5 rounded-md border border-border bg-white text-xs font-mono font-semibold text-foreground hover:bg-[#FAF9F6] inline-flex items-center gap-1.5 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      className="min-h-[36px] px-2.5 rounded-md border border-border bg-white text-xs font-mono font-semibold text-foreground hover:bg-[#FAF9F6] inline-flex items-center gap-1.5 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     >
                       <span>{activeQrOrder.order_code}</span>
                       {copiedCode ? (
@@ -895,7 +942,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
 
                 {/* QR Frame */}
                 <div className="p-4 flex flex-col items-center text-center">
-                  <div className="rounded-xl border border-border bg-white p-2.5 shadow-2xs">
+                  <div className="rounded-xl border border-border bg-white p-2.5 shadow-2xs min-h-[220px] min-w-[220px] flex items-center justify-center">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={activeQrUrl}
@@ -929,6 +976,19 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                     </p>
                   )}
                 </div>
+              </div>
+            ) : isCashOnly ? (
+              <div className="rounded-xl border border-border bg-[#FAF9F6] px-6 py-8 flex flex-col items-center text-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-[#0F766E]/25 bg-[#F0FDFA] px-2.5 py-0.5 text-[11px] font-medium text-[#0F766E]">
+                  <span className="size-1.5 rounded-full bg-[#0F766E]" aria-hidden="true" />
+                  Thu tiền mặt tại quầy
+                </span>
+                <p className="mt-1 font-mono tabular-nums text-2xl font-bold tracking-tight text-foreground">
+                  {formatVND(cashCollectVnd)}
+                </p>
+                <p className="text-xs text-muted-foreground max-w-[260px] leading-relaxed">
+                  Đơn này thanh toán hoàn toàn bằng tiền mặt nên không cần tạo mã chuyển khoản VietQR.
+                </p>
               </div>
             ) : (
               <div className="rounded-xl border border-dashed border-input bg-[#FAF9F6] px-6 py-10 flex flex-col items-center text-center gap-3">
@@ -988,7 +1048,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                           <button
                             type="button"
                             onClick={() => onProceedToReceiptVerify(order)}
-                            className="text-xs font-medium text-primary hover:underline cursor-pointer"
+                            className="inline-flex items-center min-h-[30px] px-2 rounded-md border border-primary/25 bg-[#FAF9F6] text-xs font-medium text-primary hover:bg-primary/5 cursor-pointer transition-colors"
                           >
                             Soát bill
                           </button>

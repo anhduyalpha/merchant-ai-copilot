@@ -16,7 +16,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { fetchAssetAsBase64, fileToBase64 } from '@/lib/client-image';
 import { RECEIPT_FRAUD_SCENARIOS, type ReceiptFraudScenario } from '@/lib/demo-presets';
-import { cleanBankDisplay, cleanCustomerDisplay } from '@/lib/utils';
+import { cleanBankDisplay, cleanCustomerDisplay, stripLayerPrefix } from '@/lib/utils';
 import { formatVND } from '@/lib/vietqr';
 import type { OrderRow, PaymentReceiptRow } from '@/types/database';
 
@@ -47,6 +47,7 @@ interface VerifyResponsePayload {
 
 export interface ReceiptFraudInspectorHandle {
   runDemoPreset: (scenarioId: ReceiptFraudScenario['id']) => void;
+  resetView: () => void;
 }
 
 interface ReceiptFraudInspectorProps {
@@ -86,6 +87,7 @@ export const ReceiptFraudInspector = forwardRef<
   const [auditResult, setAuditResult] = useState<VerifyResponsePayload | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const scenarioLoadingRef = useRef(false);
 
   const targetOrder =
     orders.find((o) => o.id === selectedOrderId) ??
@@ -153,6 +155,8 @@ export const ReceiptFraudInspector = forwardRef<
   }
 
   async function handleLoadAndRunScenario(scenario: ReceiptFraudScenario) {
+    if (isVerifying || scenarioLoadingRef.current) return;
+    scenarioLoadingRef.current = true;
     setActiveScenarioId(scenario.id);
     try {
       const loaded = await fetchAssetAsBase64(scenario.imagePath);
@@ -173,6 +177,8 @@ export const ReceiptFraudInspector = forwardRef<
       });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Không tải được ảnh mẫu.');
+    } finally {
+      scenarioLoadingRef.current = false;
     }
   }
 
@@ -182,6 +188,13 @@ export const ReceiptFraudInspector = forwardRef<
       if (scenario) {
         void handleLoadAndRunScenario(scenario);
       }
+    },
+    resetView() {
+      setAuditResult(null);
+      setImagePreviewUrl(null);
+      setImagePayload(null);
+      setActiveScenarioId(undefined);
+      setCopiedRef(false);
     },
   }));
 
@@ -272,10 +285,18 @@ export const ReceiptFraudInspector = forwardRef<
               {orders.map((o) => {
                 const expected = o.transfer_amount_vnd > 0 ? o.transfer_amount_vnd : o.total_vnd;
                 const customer = cleanCustomerDisplay(o.customer_name);
+                const statusLabel =
+                  o.status === 'paid'
+                    ? 'Đã thu'
+                    : o.status === 'debt'
+                      ? 'Ghi sổ'
+                      : o.status === 'cancelled'
+                        ? 'Đã hủy'
+                        : 'Chờ thu';
                 return (
                   <option key={o.id} value={o.id}>
                     {o.order_code} • {formatVND(expected)}
-                    {customer ? ` • ${customer}` : ''} ({o.status === 'paid' ? 'Đã thu' : 'Chờ thu'})
+                    {customer ? ` • ${customer}` : ''} ({statusLabel})
                   </option>
                 );
               })}
@@ -402,7 +423,7 @@ export const ReceiptFraudInspector = forwardRef<
             </div>
           ) : auditResult ? (
             <>
-              {/* Extracted Slip Ledger Bar */}
+              {/* Extracted Slip Comparison Bar */}
               <div className="rounded-lg border border-border bg-[#FAF9F6] grid grid-cols-2 sm:grid-cols-4 overflow-hidden text-xs">
                 <div className="p-3 min-w-0 border-b sm:border-b-0 border-r border-border">
                   <p className="text-[11px] text-muted-foreground">Mã giao dịch</p>
@@ -421,13 +442,18 @@ export const ReceiptFraudInspector = forwardRef<
                   </button>
                 </div>
                 <div className="p-3 min-w-0 border-b sm:border-b-0 sm:border-r border-border">
-                  <p className="text-[11px] text-muted-foreground">Số tiền trên ảnh</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Trên ảnh / Cần thu
+                  </p>
                   <p
                     className={`mt-1 font-mono tabular-nums font-bold truncate ${
                       amountMatches ? 'text-[#0F766E]' : 'text-[#BE123C]'
                     }`}
                   >
                     {formatVND(auditResult.extraction.extractedAmountVnd)}
+                  </p>
+                  <p className="mt-0.5 font-mono tabular-nums text-[10.5px] text-muted-foreground truncate">
+                    Đơn: {formatVND(auditResult.receipt.expected_amount_vnd)}
                   </p>
                 </div>
                 <div className="p-3 min-w-0 border-r border-border">
@@ -476,7 +502,9 @@ export const ReceiptFraudInspector = forwardRef<
                           <span className="font-mono text-[11px] font-medium text-muted-foreground">
                             Lớp {chk.layer}
                           </span>
-                          <span className="text-sm font-medium text-foreground">{chk.labelVi}</span>
+                          <span className="text-sm font-medium text-foreground">
+                            {stripLayerPrefix(chk.labelVi)}
+                          </span>
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
                           {chk.detailVi}
@@ -575,8 +603,26 @@ export const ReceiptFraudInspector = forwardRef<
           ) : (
             <div className="divide-y divide-border max-h-60 overflow-y-auto">
               {paymentReceipts.slice(0, 8).map((r) => {
-                const isRejected = r.verdict === 'rejected' || r.risk_level === 'high';
                 const isApproved = r.verdict === 'approved';
+                const isRejected = r.verdict === 'rejected';
+                const isHighRiskPending = !isApproved && !isRejected && r.risk_level === 'high';
+                const toneText = isApproved
+                  ? 'text-[#0F766E]'
+                  : isRejected || isHighRiskPending
+                    ? 'text-[#BE123C]'
+                    : 'text-[#B45309]';
+                const toneDot = isApproved
+                  ? 'bg-[#0F766E]'
+                  : isRejected || isHighRiskPending
+                    ? 'bg-[#BE123C]'
+                    : 'bg-[#B45309]';
+                const statusLabel = isApproved
+                  ? 'Đã nhận'
+                  : isRejected
+                    ? 'Từ chối'
+                    : isHighRiskPending
+                      ? 'Cảnh báo'
+                      : 'Chờ duyệt';
 
                 return (
                   <div
@@ -596,26 +642,9 @@ export const ReceiptFraudInspector = forwardRef<
                       <span className="font-mono tabular-nums font-semibold text-foreground">
                         {formatVND(r.extracted_amount_vnd)}
                       </span>
-                      <span
-                        className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${
-                          isRejected
-                            ? 'text-[#BE123C]'
-                            : isApproved
-                              ? 'text-[#0F766E]'
-                              : 'text-[#B45309]'
-                        }`}
-                      >
-                        <span
-                          className={`size-1.5 rounded-full ${
-                            isRejected
-                              ? 'bg-[#BE123C]'
-                              : isApproved
-                                ? 'bg-[#0F766E]'
-                                : 'bg-[#B45309]'
-                          }`}
-                          aria-hidden="true"
-                        />
-                        {isApproved ? 'Đã nhận' : isRejected ? 'Từ chối' : 'Chờ duyệt'}
+                      <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${toneText}`}>
+                        <span className={`size-1.5 rounded-full ${toneDot}`} aria-hidden="true" />
+                        {statusLabel}
                       </span>
                     </div>
                   </div>

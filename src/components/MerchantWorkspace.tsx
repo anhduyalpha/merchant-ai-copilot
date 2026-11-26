@@ -151,6 +151,9 @@ export function MerchantWorkspace() {
       }
       setActivePreset(null);
       setSelectedOrderId(null);
+      orderPanelRef.current?.resetView();
+      receiptPanelRef.current?.resetView();
+      copilotPanelRef.current?.resetView();
       await loadWorkspaceData();
       toast.success('Đã khôi phục dữ liệu mẫu Tiệm Cà Phê Mộc.');
     } catch (err) {
@@ -572,7 +575,7 @@ function LedgerMetric({
       >
         {value}
       </p>
-      <p className="mt-0.5 text-[11px] text-muted-foreground truncate">{detail}</p>
+      <p className="mt-0.5 text-[11px] text-muted-foreground leading-snug">{detail}</p>
     </div>
   );
 }

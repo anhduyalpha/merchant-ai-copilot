@@ -14,12 +14,13 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { CopilotAction } from '@/lib/ai/schemas';
-import { cleanChannelDisplay, cleanCustomerDisplay } from '@/lib/utils';
+import { cleanChannelDisplay, cleanCustomerDisplay, cleanMerchantCopy } from '@/lib/utils';
 import { formatVND } from '@/lib/vietqr';
 import type { CustomerDebtRow } from '@/types/database';
 
 export interface OperationsCopilotHandle {
   runDemoPrompt: (promptText: string) => void;
+  resetView: () => void;
 }
 
 interface OperationsCopilotPanelProps {
@@ -44,8 +45,10 @@ const QUICK_PROMPTS: ReadonlyArray<{ label: string; prompt: string }> = [
 ];
 
 const TOOL_LABELS_VI: Record<string, string> = {
+  get_daily_revenue: 'Doanh thu hôm nay',
   get_daily_sales_summary: 'Doanh thu hôm nay',
   get_slow_moving_items: 'Thống kê thực đơn',
+  get_unpaid_debts: 'Sổ nợ khách quen',
   list_unpaid_debts: 'Sổ nợ khách quen',
   draft_vietqr_debt_reminders: 'Mẫu nhắc nợ VietQR',
 };
@@ -93,6 +96,12 @@ export const OperationsCopilotPanel = forwardRef<
     runDemoPrompt(promptText) {
       setPrompt(promptText);
       void runCopilot(promptText);
+    },
+    resetView() {
+      setCopilotData(null);
+      setOpenQrCode(null);
+      setCopiedKey(null);
+      setPrompt(QUICK_PROMPTS[0].prompt);
     },
   }));
 
@@ -222,14 +231,14 @@ export const OperationsCopilotPanel = forwardRef<
             </h3>
 
             <p className="text-sm text-foreground leading-relaxed rounded-lg bg-[#FAF9F6] border border-border p-4 max-w-[68ch]">
-              {copilotData.summaryVi}
+              {cleanMerchantCopy(copilotData.summaryVi)}
             </p>
 
             {copilotData.highlightsVi.length > 0 && (
               <ul className="space-y-1.5 text-xs text-muted-foreground list-disc pl-5 max-w-[68ch]">
                 {copilotData.highlightsVi.map((h, idx) => (
                   <li key={idx} className="leading-relaxed">
-                    {h}
+                    {cleanMerchantCopy(h)}
                   </li>
                 ))}
               </ul>
@@ -316,12 +325,19 @@ export const OperationsCopilotPanel = forwardRef<
                 const customerName = cleanCustomerDisplay(debt.customer_name);
                 const channelHandle = cleanChannelDisplay(debt.channel_handle);
                 const aiDraft = reminderDraftByOrder.get(debt.order_code.toUpperCase());
+                const qrToShow = aiDraft?.vietqrUrl ?? debt.vietqr_url;
+                const cleanAiPreview = aiDraft
+                  ? cleanMerchantCopy(
+                      aiDraft.messageVi
+                        .replace(/https?:\/\/\S+/gi, '')
+                        .replace(/[:\s]+$/, '')
+                    )
+                  : '';
                 const defaultMsg = `Dạ em chào ${customerName}, em gửi mình hóa đơn ${debt.order_code} (${debt.notes ?? 'đơn tại quán'}) số tiền ${formatVND(debt.amount_due_vnd)} ạ. Mình quét mã VietQR giúp quán nhé: ${debt.vietqr_url ?? ''}`;
                 const copyText = aiDraft
-                  ? `${aiDraft.messageVi}\nLink VietQR thanh toán: ${aiDraft.vietqrUrl}`
+                  ? `${cleanAiPreview}${qrToShow ? `\nLink VietQR thanh toán: ${qrToShow}` : ''}`
                   : defaultMsg;
                 const isSettled = debt.status === 'settled';
-                const qrToShow = aiDraft?.vietqrUrl ?? debt.vietqr_url;
 
                 return (
                   <div key={debt.id} className="p-4 sm:px-5 space-y-3 bg-white">
@@ -364,9 +380,9 @@ export const OperationsCopilotPanel = forwardRef<
                       </div>
                     </div>
 
-                    {aiDraft && (
-                      <div className="rounded-lg bg-[#FAF9F6] border border-border p-3 text-xs text-foreground leading-relaxed">
-                        {aiDraft.messageVi}
+                    {aiDraft && cleanAiPreview && (
+                      <div className="rounded-lg bg-[#FAF9F6] border border-border p-3 text-xs text-foreground leading-relaxed break-words [overflow-wrap:anywhere]">
+                        {cleanAiPreview}
                       </div>
                     )}
 

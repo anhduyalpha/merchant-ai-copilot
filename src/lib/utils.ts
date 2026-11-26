@@ -26,3 +26,17 @@ export function cleanChannelDisplay(handle: string | null | undefined): string {
     .replace(/\.demo\b/gi, '')
     .trim();
 }
+
+export function cleanMerchantCopy(text: string | null | undefined): string {
+  if (!text) return '';
+  return text
+    .replace(/Quán Cà Phê Demo/gi, 'Tiệm Cà Phê Mộc')
+    .replace(/QUAN[\s+]CA[\s+]PHE[\s+]DEMO/gi, 'TIEM CA PHE MOC')
+    .replace(/\s*\((?:Demo|Synthetic(?:\s+Demo)?)\)\s*/gi, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+export function stripLayerPrefix(label: string): string {
+  return label.replace(/^Lớp\s+\d+\s*[•·:\-]\s*/i, '').trim();
+}
