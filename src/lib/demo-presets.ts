@@ -26,6 +26,7 @@ export interface ReceiptFraudScenario {
   id: 'valid_receipt' | 'tampered_amount_receipt' | 'reused_transaction_ref';
   titleVi: string;
   badgeLabel: string;
+  imagePath: string;
   targetOrderCode: string;
   expectedAmountVnd: number;
   simulatedExtraction: {
@@ -97,6 +98,14 @@ export const VOICE_TRANSCRIPT_PRESETS: readonly VoiceTranscriptPreset[] = [
   },
 ] as const;
 
+export const HANDWRITTEN_ORDER_DEMO = {
+  id: 'handwritten-table-2',
+  label: 'Ảnh giấy ghi tay order Bàn 2',
+  imagePath: '/demo-assets/handwritten-order-demo.png',
+  expectedSummaryVi:
+    '2 Cà phê sữa đá (58k) + 1 Bạc xỉu đá (32k) + 1 Bánh mì que pate (18k) = VietQR 108.000 ₫',
+} as const;
+
 /**
  * 3 Anti-Fraud Receipt Verification test scenarios for competition judges.
  */
@@ -105,6 +114,7 @@ export const RECEIPT_FRAUD_SCENARIOS: readonly ReceiptFraudScenario[] = [
     id: 'valid_receipt',
     titleVi: 'Biên lai hợp lệ (Khớp số tiền & Mã GD mới)',
     badgeLabel: 'An toàn • Duyệt 1 chạm',
+    imagePath: '/demo-assets/receipt-valid-new.png',
     targetOrderCode: 'DH1004',
     expectedAmountVnd: 64000,
     simulatedExtraction: {
@@ -125,6 +135,7 @@ export const RECEIPT_FRAUD_SCENARIOS: readonly ReceiptFraudScenario[] = [
     id: 'tampered_amount_receipt',
     titleVi: 'Biên lai sửa số tiền (Chuyển 6.400 ₫ thành 64.000 ₫)',
     badgeLabel: 'Rủi ro cao • Giả mạo số tiền',
+    imagePath: '/demo-assets/receipt-tampered-6400.png',
     targetOrderCode: 'DH1004',
     expectedAmountVnd: 64000,
     simulatedExtraction: {
@@ -148,6 +159,7 @@ export const RECEIPT_FRAUD_SCENARIOS: readonly ReceiptFraudScenario[] = [
     id: 'reused_transaction_ref',
     titleVi: 'Biên lai tái sử dụng mã giao dịch cũ (FT26330998811)',
     badgeLabel: 'Rủi ro cao • Trùng mã GD cũ',
+    imagePath: '/demo-assets/receipt-dh1001-valid.png',
     targetOrderCode: 'DH1005',
     expectedAmountVnd: 64000,
     simulatedExtraction: {
