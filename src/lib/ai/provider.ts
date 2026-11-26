@@ -5,7 +5,7 @@ import {
   type ImageFormat,
 } from '@aws-sdk/client-bedrock-runtime';
 import { GoogleGenAI } from '@google/genai';
-import type { z } from 'zod';
+import { z } from 'zod';
 
 export type AIProviderName = 'gemini' | 'bedrock' | 'agnes';
 
@@ -373,25 +373,33 @@ export async function generateStructuredJSON<T>(
     }
   }
 
+  let jsonSchemaHint = '';
+  try {
+    jsonSchemaHint = `\n\nSTRICT JSON OUTPUT SCHEMA (return ONLY a valid JSON object matching every required key and enum):\n${JSON.stringify(z.toJSONSchema(params.schema, { unrepresentable: 'any' }))}`;
+  } catch {
+    jsonSchemaHint = '';
+  }
+  const enrichedSystemPrompt = `${systemPrompt}${jsonSchemaHint}`;
+
   let rawOutput: string;
   try {
     rawOutput =
       provider === 'bedrock'
         ? await invokeBedrockConverse({
-            systemPrompt,
+            systemPrompt: enrichedSystemPrompt,
             userPrompt,
             cleanBase64,
             imageMimeType,
           })
         : provider === 'agnes'
           ? await invokeAgnesChatCompletions({
-              systemPrompt,
+              systemPrompt: enrichedSystemPrompt,
               userPrompt,
               cleanBase64,
               imageMimeType,
             })
           : await invokeGeminiGenerate({
-              systemPrompt,
+              systemPrompt: enrichedSystemPrompt,
               userPrompt,
               cleanBase64,
               imageMimeType,

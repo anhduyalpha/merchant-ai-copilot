@@ -5,29 +5,29 @@ import { z } from 'zod';
  * Matches Vietnamese slang (cf sữa, bx, trà đào), modifiers, split payment, and regular-customer discounts.
  */
 export const ParsedOrderItemSchema = z.object({
-  sku: z.string().nullable(),
+  sku: z.string().nullable().default(null),
   matchedItemName: z.string().min(1),
-  rawText: z.string().min(1),
+  rawText: z.string().default(''),
   quantity: z.number().int().positive(),
-  unitPriceVnd: z.number().int().nonnegative(),
+  unitPriceVnd: z.number().int().nonnegative().default(0),
   modifiers: z.array(z.string()).default([]),
-  paymentSplitTag: z.enum(['cash', 'transfer', 'shared']).default('shared'),
-  lineTotalVnd: z.number().int().nonnegative(),
+  paymentSplitTag: z.enum(['cash', 'transfer', 'shared']).catch('shared').default('shared'),
+  lineTotalVnd: z.number().int().nonnegative().default(0),
 });
 
 export const ParsedOrderSchema = z.object({
   tableOrChannel: z.string().min(1).default('Tại quầy'),
   customerName: z.string().nullable().default(null),
   items: z.array(ParsedOrderItemSchema).min(1),
-  subtotalVnd: z.number().int().nonnegative(),
+  subtotalVnd: z.number().int().nonnegative().default(0),
   discountVnd: z.number().int().nonnegative().default(0),
   discountReason: z.string().nullable().default(null),
-  totalVnd: z.number().int().nonnegative(),
+  totalVnd: z.number().int().nonnegative().default(0),
   cashAmountVnd: z.number().int().nonnegative().default(0),
   transferAmountVnd: z.number().int().nonnegative().default(0),
-  paymentMethod: z.enum(['vietqr', 'cash', 'split', 'debt']),
+  paymentMethod: z.enum(['vietqr', 'cash', 'split', 'debt', 'transfer']).catch('vietqr').default('vietqr'),
   unmatchedNotes: z.array(z.string()).default([]),
-  confidence: z.number().min(0).max(1),
+  confidence: z.number().min(0).max(1).catch(0.9).default(0.9),
 });
 
 export type ParsedOrderItem = z.infer<typeof ParsedOrderItemSchema>;
