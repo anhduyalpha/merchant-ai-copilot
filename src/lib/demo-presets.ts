@@ -49,7 +49,7 @@ export interface ReceiptFraudScenario {
 export const SLANG_CHAT_PRESETS: readonly SlangChatPreset[] = [
   {
     id: 'slang-split-discount',
-    label: 'Đơn lóng tách tiền mặt/CK + giảm giá khách quen',
+    label: 'Bàn 3 • Tách tiền mặt & CK',
     channel: 'Tại quầy',
     rawMessage:
       'Bàn 3 thêm 2 bx ít ngọt, 1 cf sữa nhiều đá, khách quen giảm 10k, tách riêng 1 trà đào tính tiền mặt nha quán ơi!',
@@ -58,7 +58,7 @@ export const SLANG_CHAT_PRESETS: readonly SlangChatPreset[] = [
   },
   {
     id: 'slang-zalo-office',
-    label: 'Đơn Zalo văn phòng đặt gộp nhiều món viết tắt',
+    label: 'Nhóm văn phòng • Đặt nhiều món',
     channel: 'Zalo',
     rawMessage:
       'Shop ơi ship tầng 4 giúp em: 3 cf đen ko đường, 2 tdcs ít đá, 2 bmq nóng giòn. Cho em xin mã QR tổng luôn ạ.',
@@ -67,7 +67,7 @@ export const SLANG_CHAT_PRESETS: readonly SlangChatPreset[] = [
   },
   {
     id: 'slang-regular-debt',
-    label: 'Đơn khách quen ghi sổ cuối ngày',
+    label: 'Khách quen • Ghi sổ',
     channel: 'Facebook',
     rawMessage:
       'Chị Lan tiệm hoa đầu hẻm lấy thêm 2 matcha kem muối ít đá với 1 sc việt quất nha em, ghi sổ chiều chị chuyển gộp luôn.',
@@ -82,7 +82,7 @@ export const SLANG_CHAT_PRESETS: readonly SlangChatPreset[] = [
 export const VOICE_TRANSCRIPT_PRESETS: readonly VoiceTranscriptPreset[] = [
   {
     id: 'voice-rush-hour',
-    label: 'Giọng đọc giờ cao điểm tại quầy',
+    label: 'Đọc nhanh tại quầy',
     transcript:
       'Cho bàn số năm hai nâu đá ít sữa một trà vải hoa hồng không thạch với hai bánh mì que pate nướng kỹ tính chuyển khoản hết nhé',
     expectedSummaryVi:
@@ -90,7 +90,7 @@ export const VOICE_TRANSCRIPT_PRESETS: readonly VoiceTranscriptPreset[] = [
   },
   {
     id: 'voice-takeaway-split',
-    label: 'Giọng đọc đơn mang đi chia tiền lẻ',
+    label: 'Đơn mang đi tách tiền',
     transcript:
       'Mang về một bạc xỉu đá với một trà đào cam sả khách đưa trước hai mươi nghìn tiền mặt phần còn lại quét mã QR',
     expectedSummaryVi:
@@ -100,7 +100,7 @@ export const VOICE_TRANSCRIPT_PRESETS: readonly VoiceTranscriptPreset[] = [
 
 export const HANDWRITTEN_ORDER_DEMO = {
   id: 'handwritten-table-2',
-  label: 'Ảnh giấy ghi tay order Bàn 2',
+  label: 'Giấy ghi tay Bàn 2',
   imagePath: '/demo-assets/handwritten-order-demo.png',
   expectedSummaryVi:
     '2 Cà phê sữa đá (58k) + 1 Bạc xỉu đá (32k) + 1 Bánh mì que pate (18k) = VietQR 108.000 ₫',
@@ -112,59 +112,59 @@ export const HANDWRITTEN_ORDER_DEMO = {
 export const RECEIPT_FRAUD_SCENARIOS: readonly ReceiptFraudScenario[] = [
   {
     id: 'valid_receipt',
-    titleVi: 'Biên lai hợp lệ (Khớp số tiền & Mã GD mới)',
-    badgeLabel: 'An toàn • Duyệt 1 chạm',
+    titleVi: 'Bill hợp lệ • Khớp số tiền & mã GD mới',
+    badgeLabel: 'Hợp lệ',
     imagePath: '/demo-assets/receipt-valid-new.png',
     targetOrderCode: 'DH1004',
     expectedAmountVnd: 64000,
     simulatedExtraction: {
       transactionRef: 'FT26330998899',
-      bankName: 'MB Bank (Synthetic Demo)',
+      bankName: 'MB Bank',
       extractedAmountVnd: 64000,
       receiptTimestampIso: new Date().toISOString(),
-      transferNote: 'DH1004 QUAN CA PHE DEMO',
+      transferNote: 'DH1004 TIEM CA PHE MOC',
       visualTamperingFlags: [],
       tamperingConfidence: 0.03,
     },
     expectedRiskLevel: 'low',
     expectedVerdict: 'approved',
     explanationVi:
-      'Khớp chính xác 64.000 ₫, mã giao dịch FT26330998899 chưa từng xuất hiện trong hệ thống, thời gian hợp lệ và không có dấu hiệu chỉnh sửa ảnh.',
+      'Khớp chính xác 64.000 ₫, mã giao dịch FT26330998899 chưa từng xuất hiện, thời gian hợp lệ và ảnh biên lai nguyên vẹn.',
   },
   {
     id: 'tampered_amount_receipt',
-    titleVi: 'Biên lai sửa số tiền (Chuyển 6.400 ₫ thành 64.000 ₫)',
-    badgeLabel: 'Rủi ro cao • Giả mạo số tiền',
+    titleVi: 'Bill nghi sửa tiền • 6.400 ₫ thành 64.000 ₫',
+    badgeLabel: 'Nghi sửa tiền',
     imagePath: '/demo-assets/receipt-tampered-6400.png',
     targetOrderCode: 'DH1004',
     expectedAmountVnd: 64000,
     simulatedExtraction: {
       transactionRef: 'FT26330998901',
-      bankName: 'MB Bank (Synthetic Demo)',
+      bankName: 'MB Bank',
       extractedAmountVnd: 6400,
       receiptTimestampIso: new Date().toISOString(),
       transferNote: 'DH1004',
       visualTamperingFlags: [
-        'Lệch baseline và độ nét chữ số "0" cuối trong vùng số tiền hiển thị',
-        'Nhiễu nền JPEG không đồng nhất quanh dòng số tiền (nghi ghép ảnh)',
+        'Lệch chân chữ và độ nét ở số "0" cuối vùng số tiền',
+        'Nhiễu nền JPEG không đều quanh dòng số tiền (nghi chỉnh sửa)',
       ],
       tamperingConfidence: 0.91,
     },
     expectedRiskLevel: 'high',
     expectedVerdict: 'rejected',
     explanationVi:
-      'Cảnh báo đỏ: Số tiền thực trích xuất chỉ 6.400 ₫ (thiếu 57.600 ₫ so với đơn 64.000 ₫) kèm dấu hiệu can thiệp phông chữ trên ảnh chụp màn hình.',
+      'Số tiền đọc được chỉ là 6.400 ₫ (thiếu 57.600 ₫ so với đơn 64.000 ₫), kèm dấu hiệu chỉnh sửa vùng số tiền trên ảnh.',
   },
   {
     id: 'reused_transaction_ref',
-    titleVi: 'Biên lai tái sử dụng mã giao dịch cũ (FT26330998811)',
-    badgeLabel: 'Rủi ro cao • Trùng mã GD cũ',
+    titleVi: 'Bill trùng mã GD cũ • FT26330998811',
+    badgeLabel: 'Trùng mã GD',
     imagePath: '/demo-assets/receipt-dh1001-valid.png',
     targetOrderCode: 'DH1005',
     expectedAmountVnd: 64000,
     simulatedExtraction: {
       transactionRef: 'FT26330998811',
-      bankName: 'MB Bank (Synthetic Demo)',
+      bankName: 'MB Bank',
       extractedAmountVnd: 64000,
       receiptTimestampIso: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
       transferNote: 'DH1001',
@@ -174,7 +174,7 @@ export const RECEIPT_FRAUD_SCENARIOS: readonly ReceiptFraudScenario[] = [
     expectedRiskLevel: 'high',
     expectedVerdict: 'rejected',
     explanationVi:
-      'Chặn gian lận dùng lại bill cũ: Mã giao dịch FT26330998811 đã được duyệt cho đơn DH1001 trước đó 2 giờ.',
+      'Mã giao dịch FT26330998811 đã được dùng cho đơn DH1001 cách đây 2 giờ.',
   },
 ] as const;
 
@@ -285,7 +285,7 @@ export function buildSyntheticSeedDataset(): {
       id: '22222222-2222-4222-8222-222222222201',
       order_code: 'DH1001',
       table_or_channel: 'Bàn 1',
-      customer_name: 'Khách lẻ Bàn 1 (Demo)',
+      customer_name: 'Bàn 1',
       source_type: 'chat',
       raw_input: 'Cho bàn 1 1 cf sữa ít đá với 1 trà đào nha shop',
       subtotal_vnd: 64000,
@@ -296,13 +296,13 @@ export function buildSyntheticSeedDataset(): {
       payment_method: 'vietqr',
       status: 'paid',
       vietqr_url: qrDh1001,
-      notes: 'Đã đối soát biên lai hợp lệ FT26330998811',
+      notes: 'Đã soát chuyển khoản hợp lệ FT26330998811',
     },
     {
       id: '22222222-2222-4222-8222-222222222202',
       order_code: 'DH1002',
-      table_or_channel: 'Zalo OA',
-      customer_name: 'Anh Minh Thiết Kế (Demo)',
+      table_or_channel: 'Zalo',
+      customer_name: 'Anh Minh (Thiết kế)',
       source_type: 'chat',
       raw_input: 'Em ơi ship sang studio cho anh 3 bx ít ngọt nhé, cuối chiều anh ck gộp luôn',
       subtotal_vnd: 96000,
@@ -318,8 +318,8 @@ export function buildSyntheticSeedDataset(): {
     {
       id: '22222222-2222-4222-8222-222222222203',
       order_code: 'DH1003',
-      table_or_channel: 'Facebook Messenger',
-      customer_name: 'Chị Lan Tiệm Hoa (Demo)',
+      table_or_channel: 'Facebook',
+      customer_name: 'Chị Lan (Tiệm hoa)',
       source_type: 'chat',
       raw_input: 'Cho chị 1 matcha kem muối với 1 trà đào qua tiệm hoa nhé, ghi sổ giúp chị nha',
       subtotal_vnd: 77000,
@@ -392,7 +392,7 @@ export function buildSyntheticSeedDataset(): {
       id: '33333333-3333-4333-8333-333333333301',
       order_id: '22222222-2222-4222-8222-222222222201',
       transaction_ref: 'FT26330998811',
-      bank_name: 'MB Bank (Synthetic Demo)',
+      bank_name: 'MB Bank',
       extracted_amount_vnd: 64000,
       expected_amount_vnd: 64000,
       receipt_timestamp: twoHoursAgoIso,
@@ -404,7 +404,7 @@ export function buildSyntheticSeedDataset(): {
       visual_tampering_flags: [],
       risk_level: 'low',
       verdict: 'approved',
-      reviewed_by: 'Chủ quán (Demo)',
+      reviewed_by: 'Chủ quán',
       reviewed_at: reviewedIso,
     },
   ];
@@ -414,9 +414,9 @@ export function buildSyntheticSeedDataset(): {
       id: '44444444-4444-4444-8444-444444444401',
       order_id: '22222222-2222-4222-8222-222222222202',
       order_code: 'DH1002',
-      customer_name: 'Anh Minh Thiết Kế (Demo)',
+      customer_name: 'Anh Minh (Thiết kế)',
       customer_alias: 'Anh Minh Studio',
-      channel_handle: 'Zalo: 0900-000-102 (Synthetic)',
+      channel_handle: 'Zalo: 0900-000-102',
       amount_due_vnd: 96000,
       due_date: todayDate,
       status: 'unpaid',
@@ -427,9 +427,9 @@ export function buildSyntheticSeedDataset(): {
       id: '44444444-4444-4444-8444-444444444402',
       order_id: '22222222-2222-4222-8222-222222222203',
       order_code: 'DH1003',
-      customer_name: 'Chị Lan Tiệm Hoa (Demo)',
+      customer_name: 'Chị Lan (Tiệm hoa)',
       customer_alias: 'Chị Lan Hoa Tươi',
-      channel_handle: 'Messenger: @lan.tiemhoa.demo',
+      channel_handle: 'Messenger: @lan.tiemhoa',
       amount_due_vnd: 77000,
       due_date: todayDate,
       status: 'unpaid',

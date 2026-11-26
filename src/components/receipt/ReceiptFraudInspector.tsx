@@ -3,20 +3,20 @@
 import { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  Check,
   CheckCircle2,
+  Copy,
   ImagePlus,
   Loader2,
-  ShieldAlert,
   ShieldCheck,
   ShieldX,
   XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { fetchAssetAsBase64, fileToBase64 } from '@/lib/client-image';
 import { RECEIPT_FRAUD_SCENARIOS, type ReceiptFraudScenario } from '@/lib/demo-presets';
+import { cleanBankDisplay, cleanCustomerDisplay } from '@/lib/utils';
 import { formatVND } from '@/lib/vietqr';
 import type { OrderRow, PaymentReceiptRow } from '@/types/database';
 
@@ -82,6 +82,7 @@ export const ReceiptFraudInspector = forwardRef<
 
   const [isVerifying, setIsVerifying] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
+  const [copiedRef, setCopiedRef] = useState(false);
   const [auditResult, setAuditResult] = useState<VerifyResponsePayload | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -99,11 +100,12 @@ export const ReceiptFraudInspector = forwardRef<
     orderCodeOverride?: string;
     omitTargetOrder?: boolean;
   }) {
+    if (isVerifying) return;
     const img = opts?.imgOverride ?? imagePayload;
     const scenarioId = opts?.scenarioOverride ?? activeScenarioId;
 
     if (!img && !scenarioId) {
-      toast.error('Vui lòng tải ảnh biên lai hoặc chọn 1 kịch bản kiểm tra mẫu.');
+      toast.error('Hãy chọn ảnh chuyển khoản hoặc thử một kịch bản mẫu.');
       return;
     }
 
@@ -130,21 +132,21 @@ export const ReceiptFraudInspector = forwardRef<
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        throw new Error(data.message || 'Không thể kiểm tra biên lai.');
+        throw new Error(data.message || 'Không thể kiểm tra ảnh chuyển khoản.');
       }
 
       setAuditResult(data as VerifyResponsePayload);
       await onVerificationUpdated();
 
       if (data.verdict === 'fraud_suspected') {
-        toast.error('Cảnh báo rủi ro cao: Phát hiện dấu hiệu gian lận biên lai!');
+        toast.error('Phát hiện dấu hiệu bất thường trên ảnh chuyển khoản.');
       } else if (data.verdict === 'warning') {
-        toast.warning('Biên lai có điểm cần lưu ý, vui lòng kiểm tra kỹ.');
+        toast.warning('Ảnh chuyển khoản có điểm cần kiểm tra thêm.');
       } else {
-        toast.success('4 lớp đối soát an toàn! Sẵn sàng duyệt 1 chạm.');
+        toast.success('Đạt cả 4 lớp đối soát. Bạn có thể xác nhận đã nhận tiền.');
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Lỗi kiểm tra biên lai.');
+      toast.error(err instanceof Error ? err.message : 'Lỗi kiểm tra ảnh chuyển khoản.');
     } finally {
       setIsVerifying(false);
     }
@@ -170,7 +172,7 @@ export const ReceiptFraudInspector = forwardRef<
         omitTargetOrder: scenario.targetOrderCode !== targetOrder?.order_code,
       });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Không tải được ảnh kịch bản.');
+      toast.error(err instanceof Error ? err.message : 'Không tải được ảnh mẫu.');
     }
   }
 
@@ -194,12 +196,12 @@ export const ReceiptFraudInspector = forwardRef<
         imageMimeType: loaded.imageMimeType,
       });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Không đọc được ảnh biên lai.');
+      toast.error(err instanceof Error ? err.message : 'Không đọc được tệp ảnh.');
     }
   }
 
   async function handleHumanDecision(action: 'approve' | 'reject') {
-    if (!auditResult?.receipt?.id) return;
+    if (!auditResult?.receipt?.id || isApproving) return;
     setIsApproving(true);
     try {
       const res = await fetch(`/api/receipts/${auditResult.receipt.id}/approve`, {
@@ -209,319 +211,472 @@ export const ReceiptFraudInspector = forwardRef<
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        throw new Error(data.message || 'Không thể cập nhật quyết định.');
+        throw new Error(data.message || 'Không thể cập nhật trạng thái.');
       }
       setAuditResult((prev) => (prev ? { ...prev, receipt: data.receipt as PaymentReceiptRow } : prev));
       await onVerificationUpdated();
       toast.success(
         action === 'approve'
-          ? 'Đã duyệt thanh toán biên lai!'
-          : 'Đã từ chối biên lai và gắn cảnh báo đơn hàng.'
+          ? 'Đã xác nhận nhận tiền cho đơn hàng.'
+          : 'Đã từ chối biên lai và gắn cảnh báo.'
       );
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Lỗi cập nhật quyết định.');
+      toast.error(err instanceof Error ? err.message : 'Lỗi cập nhật trạng thái.');
     } finally {
       setIsApproving(false);
     }
   }
 
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-      {/* Left: Order Target + Receipt Upload + 3 Presets */}
-      <div className="lg:col-span-5 space-y-5">
-        <Card className="border-border bg-card shadow-xs">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <ShieldAlert className="size-4 text-primary" aria-hidden="true" />
-              Nạp biên lai cần đối soát
-            </CardTitle>
-            <CardDescription>
-              Chọn đơn đối chiếu rồi tải ảnh chụp màn hình chuyển khoản hoặc thử 1 trong 3 kịch bản gian lận.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label htmlFor="target-order-select" className="text-xs font-medium text-muted-foreground">
-                Đơn hàng đối chiếu
-              </label>
-              <select
-                id="target-order-select"
-                value={targetOrder?.id ?? ''}
-                onChange={(e) => onSelectOrderId(e.target.value)}
-                className="mt-1 h-11 w-full rounded-xl border border-input bg-white px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                {orders.map((o) => {
-                  const expected = o.transfer_amount_vnd > 0 ? o.transfer_amount_vnd : o.total_vnd;
-                  return (
-                    <option key={o.id} value={o.id}>
-                      {o.order_code} • {formatVND(expected)} ({o.status === 'paid' ? 'Đã thu' : 'Chờ thu'})
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
+  async function handleCopyTxRef(txRef: string) {
+    try {
+      await navigator.clipboard.writeText(txRef);
+      setCopiedRef(true);
+      toast.success(`Đã sao chép mã giao dịch ${txRef}.`);
+      setTimeout(() => setCopiedRef(false), 1800);
+    } catch {
+      toast.error('Không sao chép được mã giao dịch.');
+    }
+  }
 
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">Kịch bản kiểm chứng nhanh</p>
-              <div className="space-y-2">
-                {RECEIPT_FRAUD_SCENARIOS.map((sc) => (
+  const amountMatches =
+    auditResult &&
+    auditResult.receipt.expected_amount_vnd === auditResult.extraction.extractedAmountVnd;
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+      {/* Left: Order Selector + Receipt Upload + Quick Scenarios */}
+      <div className="lg:col-span-5 space-y-5">
+        <section aria-labelledby="receipt-upload-heading" className="surface-card rounded-xl p-5 space-y-4">
+          <div>
+            <h2
+              id="receipt-upload-heading"
+              className="text-[15px] font-semibold tracking-tight text-foreground"
+            >
+              Soát ảnh chuyển khoản
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Chọn đơn cần đối chiếu rồi tải ảnh khách gửi hoặc chạy thử 3 tình huống mẫu.
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="target-order-select" className="text-xs font-medium text-muted-foreground">
+              Đơn hàng đối chiếu
+            </label>
+            <select
+              id="target-order-select"
+              value={targetOrder?.id ?? ''}
+              onChange={(e) => onSelectOrderId(e.target.value)}
+              className="mt-1 h-10 w-full rounded-lg border border-input bg-white px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              {orders.map((o) => {
+                const expected = o.transfer_amount_vnd > 0 ? o.transfer_amount_vnd : o.total_vnd;
+                const customer = cleanCustomerDisplay(o.customer_name);
+                return (
+                  <option key={o.id} value={o.id}>
+                    {o.order_code} • {formatVND(expected)}
+                    {customer ? ` • ${customer}` : ''} ({o.status === 'paid' ? 'Đã thu' : 'Chờ thu'})
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+
+          {/* 3 Test Scenarios — Clean hairline rows with status dot */}
+          <div className="space-y-2">
+            <span className="text-xs font-medium text-muted-foreground">Tình huống mẫu</span>
+            <div className="rounded-lg border border-border divide-y divide-border bg-white overflow-hidden">
+              {RECEIPT_FRAUD_SCENARIOS.map((sc) => {
+                const isSelected = activeScenarioId === sc.id;
+                const isSafe = sc.expectedRiskLevel === 'low';
+                return (
                   <button
                     key={sc.id}
                     type="button"
                     disabled={isVerifying}
                     onClick={() => void handleLoadAndRunScenario(sc)}
-                    className={`min-h-[44px] w-full flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-xs font-medium transition-all cursor-pointer ${
-                      sc.expectedRiskLevel === 'low'
-                        ? 'border-emerald-200 bg-emerald-50/70 text-emerald-900 hover:bg-emerald-100/70'
-                        : 'border-rose-200 bg-rose-50/70 text-rose-900 hover:bg-rose-100/70'
+                    className={`min-h-[44px] w-full flex items-center justify-between gap-3 px-3.5 py-2.5 text-left text-xs transition-colors cursor-pointer disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${
+                      isSelected ? 'bg-[#FAF9F6]' : 'hover:bg-[#FAF9F6]'
                     }`}
                   >
-                    <span>{sc.titleVi}</span>
-                    <Badge
-                      variant="outline"
-                      className={
-                        sc.expectedRiskLevel === 'low'
-                          ? 'border-emerald-300 bg-white text-emerald-800 shrink-0'
-                          : 'border-rose-300 bg-white text-rose-800 shrink-0'
-                      }
-                    >
-                      {sc.expectedRiskLevel === 'low' ? 'An toàn' : 'Rủi ro cao'}
-                    </Badge>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                className="hidden"
-                onChange={(e) => void handleFileUpload(e.target.files?.[0])}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => fileInputRef.current?.click()}
-                className="min-h-[44px] w-full border-primary/30 cursor-pointer"
-              >
-                <ImagePlus className="size-4 text-primary" aria-hidden="true" />
-                <span>Tải ảnh biên lai từ thiết bị</span>
-              </Button>
-
-              {imagePreviewUrl && (
-                <div className="rounded-xl border border-border bg-muted/40 p-2">
-                  <img
-                    src={imagePreviewUrl}
-                    alt="Ảnh biên lai cần đối soát"
-                    className="max-h-64 w-full object-contain rounded-lg"
-                  />
-                </div>
-              )}
-
-              <Button
-                type="button"
-                onClick={() => void runVerification()}
-                disabled={isVerifying || (!imagePayload && !activeScenarioId)}
-                className="min-h-[44px] w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold cursor-pointer"
-              >
-                {isVerifying ? (
-                  <>
-                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                    <span>Đang chạy 4 lớp đối soát AI...</span>
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="size-4" aria-hidden="true" />
-                    <span>Kiểm tra biên lai bằng AI</span>
-                  </>
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Right: 4-Layer Audit Card + Human-in-the-Loop + History */}
-      <div className="lg:col-span-7 space-y-5">
-        <Card className="border-border bg-card shadow-xs">
-          <CardHeader className="pb-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="text-base font-semibold">
-                Kết quả thẩm định chống giả mạo 4 lớp
-              </CardTitle>
-              {auditResult && <VerdictBannerBadge verdict={auditResult.verdict} />}
-            </div>
-            <CardDescription>
-              AI đề xuất rủi ro minh bạch, chủ quán giữ quyền xác nhận cuối cùng.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {auditResult ? (
-              <>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-xl border border-border bg-secondary/25 p-3 text-xs">
-                  <div>
-                    <p className="text-muted-foreground">Mã giao dịch</p>
-                    <p className="font-mono font-bold text-foreground mt-0.5">
-                      {auditResult.extraction.transactionRef}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Số tiền đọc được</p>
-                    <p className="font-bold text-primary mt-0.5">
-                      {formatVND(auditResult.extraction.extractedAmountVnd)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Ngân hàng</p>
-                    <p className="font-medium text-foreground mt-0.5 truncate">
-                      {auditResult.extraction.bankName}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Nội dung CK</p>
-                    <p className="font-medium text-foreground mt-0.5 truncate">
-                      {auditResult.extraction.transferNote || 'Không có'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-2.5">
-                  {auditResult.checks.map((chk) => (
-                    <div
-                      key={chk.key}
-                      className={`flex items-start gap-3 rounded-xl border p-3 ${
-                        chk.severity === 'pass'
-                          ? 'border-emerald-200 bg-emerald-50/60'
-                          : chk.severity === 'warning'
-                            ? 'border-amber-200 bg-amber-50/70'
-                            : 'border-rose-200 bg-rose-50/70'
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span
+                        className={`size-2 rounded-full shrink-0 ${
+                          isSafe ? 'bg-[#0F766E]' : 'bg-[#BE123C]'
+                        }`}
+                        aria-hidden="true"
+                      />
+                      <span className="font-medium text-foreground truncate">{sc.titleVi}</span>
+                    </div>
+                    <span
+                      className={`text-[11px] font-medium shrink-0 ${
+                        isSafe ? 'text-[#0F766E]' : 'text-[#BE123C]'
                       }`}
                     >
-                      {chk.severity === 'pass' ? (
-                        <CheckCircle2 className="size-5 text-emerald-700 shrink-0 mt-0.5" aria-hidden="true" />
-                      ) : chk.severity === 'warning' ? (
-                        <AlertTriangle className="size-5 text-amber-700 shrink-0 mt-0.5" aria-hidden="true" />
-                      ) : (
-                        <XCircle className="size-5 text-rose-700 shrink-0 mt-0.5" aria-hidden="true" />
-                      )}
+                      {sc.badgeLabel}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-2.5 pt-1">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              onChange={(e) => void handleFileUpload(e.target.files?.[0])}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              className="min-h-[44px] w-full rounded-lg border-input bg-white text-foreground hover:bg-[#FAF9F6] cursor-pointer"
+            >
+              <ImagePlus className="size-4 text-primary" aria-hidden="true" />
+              <span>Tải ảnh chuyển khoản từ máy</span>
+            </Button>
+
+            {imagePreviewUrl && (
+              <div className="rounded-lg border border-border bg-[#FAF9F6] p-2.5">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={imagePreviewUrl}
+                  alt="Ảnh chụp màn hình chuyển khoản cần kiểm tra"
+                  className="max-h-60 w-full object-contain rounded-md"
+                />
+              </div>
+            )}
+
+            <Button
+              type="button"
+              onClick={() => void runVerification()}
+              disabled={isVerifying || (!imagePayload && !activeScenarioId)}
+              className="min-h-[44px] w-full rounded-lg bg-primary text-primary-foreground hover:bg-[#8B0054] font-medium cursor-pointer"
+            >
+              {isVerifying ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  <span>Đang kiểm tra 4 lớp...</span>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="size-4" aria-hidden="true" />
+                  <span>Kiểm tra chuyển khoản</span>
+                </>
+              )}
+            </Button>
+          </div>
+        </section>
+      </div>
+
+      {/* Right: 4-Layer Bank Security Audit Console + History */}
+      <div className="lg:col-span-7 space-y-5">
+        <section aria-labelledby="audit-console-heading" className="surface-card rounded-xl p-5 space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2
+                id="audit-console-heading"
+                className="text-[15px] font-semibold tracking-tight text-foreground"
+              >
+                Kết quả đối soát 4 lớp
+              </h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Hệ thống kiểm tra tự động, bạn là người xác nhận cuối cùng.
+              </p>
+            </div>
+            {!isVerifying && auditResult && <VerdictPill verdict={auditResult.verdict} />}
+          </div>
+
+          {isVerifying ? (
+            <div className="space-y-3 animate-pulse" aria-label="Đang chạy kiểm tra 4 lớp">
+              <div className="h-16 rounded-lg bg-[#F5F4F0]" />
+              <div className="space-y-2">
+                <div className="h-14 rounded-lg bg-[#F5F4F0]" />
+                <div className="h-14 rounded-lg bg-[#F5F4F0]" />
+                <div className="h-14 rounded-lg bg-[#F5F4F0]" />
+                <div className="h-14 rounded-lg bg-[#F5F4F0]" />
+              </div>
+            </div>
+          ) : auditResult ? (
+            <>
+              {/* Extracted Slip Ledger Bar */}
+              <div className="rounded-lg border border-border bg-[#FAF9F6] grid grid-cols-2 sm:grid-cols-4 overflow-hidden text-xs">
+                <div className="p-3 min-w-0 border-b sm:border-b-0 border-r border-border">
+                  <p className="text-[11px] text-muted-foreground">Mã giao dịch</p>
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyTxRef(auditResult.extraction.transactionRef)}
+                    className="mt-1 inline-flex items-center gap-1 font-mono font-semibold text-foreground hover:text-primary transition-colors cursor-pointer max-w-full"
+                    title="Sao chép mã giao dịch"
+                  >
+                    <span className="truncate">{auditResult.extraction.transactionRef}</span>
+                    {copiedRef ? (
+                      <Check className="size-3 shrink-0 text-[#0F766E]" aria-hidden="true" />
+                    ) : (
+                      <Copy className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                    )}
+                  </button>
+                </div>
+                <div className="p-3 min-w-0 border-b sm:border-b-0 sm:border-r border-border">
+                  <p className="text-[11px] text-muted-foreground">Số tiền trên ảnh</p>
+                  <p
+                    className={`mt-1 font-mono tabular-nums font-bold truncate ${
+                      amountMatches ? 'text-[#0F766E]' : 'text-[#BE123C]'
+                    }`}
+                  >
+                    {formatVND(auditResult.extraction.extractedAmountVnd)}
+                  </p>
+                </div>
+                <div className="p-3 min-w-0 border-r border-border">
+                  <p className="text-[11px] text-muted-foreground">Ngân hàng</p>
+                  <p className="mt-1 font-medium text-foreground truncate">
+                    {cleanBankDisplay(auditResult.extraction.bankName)}
+                  </p>
+                </div>
+                <div className="p-3 min-w-0">
+                  <p className="text-[11px] text-muted-foreground">Nội dung CK</p>
+                  <p className="mt-1 font-mono text-[11px] font-medium text-foreground truncate">
+                    {auditResult.extraction.transferNote || 'Không ghi'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Structured 4-Layer Audit Rows */}
+              <div className="rounded-lg border border-border divide-y divide-border bg-white overflow-hidden">
+                {auditResult.checks.map((chk) => {
+                  const statusColor =
+                    chk.severity === 'pass'
+                      ? 'text-[#0F766E]'
+                      : chk.severity === 'warning'
+                        ? 'text-[#B45309]'
+                        : 'text-[#BE123C]';
+                  const rowBg =
+                    chk.severity === 'fail'
+                      ? 'bg-[#FFF1F2]/40'
+                      : chk.severity === 'warning'
+                        ? 'bg-[#FFFBEB]/40'
+                        : 'bg-white';
+
+                  return (
+                    <div key={chk.key} className={`flex items-start gap-3 px-4 py-3 ${rowBg}`}>
+                      <div className={`mt-0.5 shrink-0 ${statusColor}`}>
+                        {chk.severity === 'pass' ? (
+                          <CheckCircle2 className="size-4" aria-hidden="true" />
+                        ) : chk.severity === 'warning' ? (
+                          <AlertTriangle className="size-4" aria-hidden="true" />
+                        ) : (
+                          <XCircle className="size-4" aria-hidden="true" />
+                        )}
+                      </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-foreground">{chk.labelVi}</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-[11px] font-medium text-muted-foreground">
+                            Lớp {chk.layer}
+                          </span>
+                          <span className="text-sm font-medium text-foreground">{chk.labelVi}</span>
+                        </div>
                         <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
                           {chk.detailVi}
                         </p>
                       </div>
+                      <span className={`text-[11px] font-semibold shrink-0 mt-0.5 ${statusColor}`}>
+                        {chk.severity === 'pass'
+                          ? 'Đạt'
+                          : chk.severity === 'warning'
+                            ? 'Lưu ý'
+                            : 'Bất thường'}
+                      </span>
                     </div>
-                  ))}
-                </div>
-
-                {/* Human-in-the-Loop Decision Bar */}
-                <div className="rounded-xl border border-primary/25 bg-secondary/35 p-3.5 space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-xs font-semibold text-foreground">
-                      Quyết định của chủ quán (Human-in-the-Loop)
-                    </span>
-                    <Badge variant="outline" className="bg-white">
-                      Trạng thái:{' '}
-                      {auditResult.receipt.verdict === 'approved'
-                        ? 'Đã duyệt thu tiền'
-                        : auditResult.receipt.verdict === 'rejected'
-                          ? 'Đã từ chối'
-                          : 'Chờ xác nhận'}
-                    </Badge>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <Button
-                      type="button"
-                      disabled={isApproving}
-                      onClick={() => void handleHumanDecision('approve')}
-                      className="min-h-[44px] bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer"
-                    >
-                      <ShieldCheck className="size-4" aria-hidden="true" />
-                      <span>Duyệt thanh toán</span>
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      disabled={isApproving}
-                      onClick={() => void handleHumanDecision('reject')}
-                      className="min-h-[44px] cursor-pointer"
-                    >
-                      <ShieldX className="size-4" aria-hidden="true" />
-                      <span>Từ chối & Cảnh báo</span>
-                    </Button>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-border bg-secondary/20 p-8 text-center text-xs text-muted-foreground">
-                Chọn 1 trong 3 kịch bản kiểm tra bên trái hoặc tải ảnh biên lai để xem chi tiết chẩn đoán 4 lớp.
+                  );
+                })}
               </div>
-            )}
-          </CardContent>
-        </Card>
 
-        <Card className="border-border bg-card shadow-xs">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">Lịch sử đối soát gần đây</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 max-h-60 overflow-y-auto">
-            {paymentReceipts.slice(0, 6).map((r) => (
-              <div
-                key={r.id}
-                className="flex items-center justify-between gap-3 rounded-xl border border-border bg-white px-3 py-2 text-xs"
-              >
-                <div className="min-w-0">
-                  <span className="font-mono font-bold text-foreground">{r.transaction_ref}</span>
-                  <span className="text-muted-foreground"> • {r.bank_name}</span>
+              {/* Human-in-the-Loop Action Footer */}
+              <div className="rounded-xl border border-border bg-[#FAF9F6] p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="font-semibold text-foreground">Xác nhận của chủ quán</span>
+                  <span className="inline-flex items-center gap-1.5 font-medium text-muted-foreground">
+                    <span
+                      className={`size-1.5 rounded-full ${
+                        auditResult.receipt.verdict === 'approved'
+                          ? 'bg-[#0F766E]'
+                          : auditResult.receipt.verdict === 'rejected'
+                            ? 'bg-[#BE123C]'
+                            : 'bg-[#B45309]'
+                      }`}
+                      aria-hidden="true"
+                    />
+                    {auditResult.receipt.verdict === 'approved'
+                      ? 'Đã xác nhận nhận tiền'
+                      : auditResult.receipt.verdict === 'rejected'
+                        ? 'Đã từ chối & báo giả'
+                        : 'Chờ bạn xác nhận'}
+                  </span>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="font-semibold">{formatVND(r.extracted_amount_vnd)}</span>
-                  <Badge
-                    className={
-                      r.risk_level === 'high' || r.verdict === 'rejected'
-                        ? 'bg-rose-100 text-rose-800 border-rose-200'
-                        : r.verdict === 'approved'
-                          ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                          : 'bg-amber-100 text-amber-800 border-amber-200'
-                    }
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <Button
+                    type="button"
+                    disabled={isApproving}
+                    onClick={() => void handleHumanDecision('approve')}
+                    className="min-h-[44px] rounded-lg bg-[#0F766E] hover:bg-[#115E59] text-white font-medium cursor-pointer"
                   >
-                    {r.verdict === 'approved'
-                      ? 'Đã duyệt'
-                      : r.verdict === 'rejected'
-                        ? 'Từ chối'
-                        : 'Chờ duyệt'}
-                  </Badge>
+                    <ShieldCheck className="size-4" aria-hidden="true" />
+                    <span>Xác nhận đã nhận tiền</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={auditResult.verdict === 'fraud_suspected' ? 'destructive' : 'outline'}
+                    disabled={isApproving}
+                    onClick={() => void handleHumanDecision('reject')}
+                    className={`min-h-[44px] rounded-lg font-medium cursor-pointer ${
+                      auditResult.verdict === 'fraud_suspected'
+                        ? 'bg-[#BE123C] hover:bg-[#9F1239] text-white'
+                        : 'border-[#BE123C]/30 bg-white text-[#BE123C] hover:bg-[#FFF1F2]'
+                    }`}
+                  >
+                    <ShieldX className="size-4" aria-hidden="true" />
+                    <span>Từ chối & Báo giả</span>
+                  </Button>
                 </div>
               </div>
-            ))}
-          </CardContent>
-        </Card>
+            </>
+          ) : (
+            <div className="rounded-xl border border-dashed border-input bg-[#FAF9F6] px-6 py-12 flex flex-col items-center text-center gap-3">
+              <AuditConsoleIllustration />
+              <p className="text-xs text-muted-foreground max-w-xs leading-relaxed">
+                Chọn ảnh chuyển khoản hoặc thử một tình huống mẫu bên trái để kiểm tra số tiền, mã giao dịch và dấu hiệu chỉnh sửa ảnh.
+              </p>
+            </div>
+          )}
+        </section>
+
+        {/* Recent Audit Log */}
+        <section aria-labelledby="receipt-history-heading" className="surface-card rounded-xl overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-border flex items-center justify-between">
+            <h2
+              id="receipt-history-heading"
+              className="text-[15px] font-semibold tracking-tight text-foreground"
+            >
+              Lịch sử đối soát
+            </h2>
+            <span className="font-mono tabular-nums text-xs text-muted-foreground">
+              {paymentReceipts.length} giao dịch
+            </span>
+          </div>
+
+          {paymentReceipts.length === 0 ? (
+            <div className="px-5 py-8 text-center text-xs text-muted-foreground">
+              Chưa có biên lai nào được kiểm tra.
+            </div>
+          ) : (
+            <div className="divide-y divide-border max-h-60 overflow-y-auto">
+              {paymentReceipts.slice(0, 8).map((r) => {
+                const isRejected = r.verdict === 'rejected' || r.risk_level === 'high';
+                const isApproved = r.verdict === 'approved';
+
+                return (
+                  <div
+                    key={r.id}
+                    className="px-5 py-3 flex items-center justify-between gap-3 text-xs hover:bg-[#FAF9F6]/70 transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <span className="font-mono font-semibold text-foreground">
+                        {r.transaction_ref}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {' '}
+                        • {cleanBankDisplay(r.bank_name)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="font-mono tabular-nums font-semibold text-foreground">
+                        {formatVND(r.extracted_amount_vnd)}
+                      </span>
+                      <span
+                        className={`inline-flex items-center gap-1.5 text-[11px] font-medium ${
+                          isRejected
+                            ? 'text-[#BE123C]'
+                            : isApproved
+                              ? 'text-[#0F766E]'
+                              : 'text-[#B45309]'
+                        }`}
+                      >
+                        <span
+                          className={`size-1.5 rounded-full ${
+                            isRejected
+                              ? 'bg-[#BE123C]'
+                              : isApproved
+                                ? 'bg-[#0F766E]'
+                                : 'bg-[#B45309]'
+                          }`}
+                          aria-hidden="true"
+                        />
+                        {isApproved ? 'Đã nhận' : isRejected ? 'Từ chối' : 'Chờ duyệt'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );
 });
 
-function VerdictBannerBadge({ verdict }: { verdict: VerifyResponsePayload['verdict'] }) {
+function VerdictPill({ verdict }: { verdict: VerifyResponsePayload['verdict'] }) {
   if (verdict === 'valid') {
     return (
-      <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">
-        An toàn • Khớp 4/4 lớp
-      </Badge>
+      <span className="inline-flex items-center gap-1.5 rounded-md border border-[#0F766E]/25 bg-[#F0FDFA] px-2.5 py-1 text-xs font-medium text-[#0F766E]">
+        <span className="size-1.5 rounded-full bg-[#0F766E]" aria-hidden="true" />
+        Hợp lệ • Đạt 4/4 lớp
+      </span>
     );
   }
   if (verdict === 'warning') {
     return (
-      <Badge className="bg-amber-100 text-amber-800 border-amber-200">
-        Cần kiểm tra lại
-      </Badge>
+      <span className="inline-flex items-center gap-1.5 rounded-md border border-[#B45309]/25 bg-[#FFFBEB] px-2.5 py-1 text-xs font-medium text-[#B45309]">
+        <span className="size-1.5 rounded-full bg-[#B45309]" aria-hidden="true" />
+        Cần kiểm tra kỹ
+      </span>
     );
   }
   return (
-    <Badge className="bg-rose-100 text-rose-800 border-rose-200">
-      Nghi ngờ giả mạo
-    </Badge>
+    <span className="inline-flex items-center gap-1.5 rounded-md border border-[#BE123C]/25 bg-[#FFF1F2] px-2.5 py-1 text-xs font-medium text-[#BE123C]">
+      <span className="size-1.5 rounded-full bg-[#BE123C]" aria-hidden="true" />
+      Cảnh báo giả mạo
+    </span>
+  );
+}
+
+function AuditConsoleIllustration() {
+  return (
+    <svg
+      width="56"
+      height="56"
+      viewBox="0 0 56 56"
+      fill="none"
+      aria-hidden="true"
+      className="text-[#A8A29E]"
+    >
+      <path
+        d="M28 7l16 6v13c0 10.5-6.8 18.6-16 23-9.2-4.4-16-12.5-16-23V13l16-6z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M22 27.5l4.2 4.2L34.5 23"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

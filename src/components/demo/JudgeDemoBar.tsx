@@ -1,20 +1,6 @@
 'use client';
 
-import { useState } from 'react';
-import {
-  ChevronDown,
-  ChevronUp,
-  FileImage,
-  MessageSquareText,
-  RotateCcw,
-  ShieldAlert,
-  ShieldCheck,
-  ShieldX,
-  Sparkles,
-  Zap,
-} from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { RotateCcw, X } from 'lucide-react';
 
 export type JudgePresetId =
   | 'slang_chat'
@@ -25,113 +11,101 @@ export type JudgePresetId =
   | 'copilot_revenue_debt';
 
 interface JudgeDemoBarProps {
+  open: boolean;
+  onClose: () => void;
   onSelectPreset: (presetId: JudgePresetId) => void;
   onResetDemo: () => Promise<void>;
   isResetting: boolean;
   activePreset: JudgePresetId | null;
 }
 
-const JUDGE_PRESET_BUTTONS: ReadonlyArray<{
+const DEMO_SCENARIOS: ReadonlyArray<{
   id: JudgePresetId;
   label: string;
-  tone: 'pos' | 'safe' | 'danger' | 'copilot';
-  icon: typeof MessageSquareText;
+  dotClass: string;
 }> = [
-  { id: 'slang_chat', label: '1. Chat Zalo tiếng lóng', tone: 'pos', icon: MessageSquareText },
-  { id: 'handwritten_order', label: '2. Ảnh giấy viết tay', tone: 'pos', icon: FileImage },
-  { id: 'valid_receipt', label: '3. Bill hợp lệ', tone: 'safe', icon: ShieldCheck },
-  { id: 'tampered_receipt', label: '4. Bill nghi sửa tiền', tone: 'danger', icon: ShieldAlert },
-  { id: 'reused_receipt', label: '5. Bill trùng mã FT26330998811', tone: 'danger', icon: ShieldX },
-  { id: 'copilot_revenue_debt', label: '6. Hỏi Copilot doanh thu & nợ', tone: 'copilot', icon: Sparkles },
+  { id: 'slang_chat', label: 'Tin nhắn đặt bàn 3', dotClass: 'bg-[#181512]/45' },
+  { id: 'handwritten_order', label: 'Giấy ghi tay', dotClass: 'bg-[#181512]/45' },
+  { id: 'valid_receipt', label: 'Bill hợp lệ', dotClass: 'bg-[#0F766E]' },
+  { id: 'tampered_receipt', label: 'Bill nghi sửa tiền', dotClass: 'bg-[#BE123C]' },
+  { id: 'reused_receipt', label: 'Bill trùng mã GD', dotClass: 'bg-[#BE123C]' },
+  { id: 'copilot_revenue_debt', label: 'Tổng kết & nhắc nợ', dotClass: 'bg-[#B45309]' },
 ];
 
 export function JudgeDemoBar({
+  open,
+  onClose,
   onSelectPreset,
   onResetDemo,
   isResetting,
   activePreset,
 }: JudgeDemoBarProps) {
-  const [expanded, setExpanded] = useState(true);
+  if (!open) return null;
 
   return (
     <section
-      aria-label="Chế độ Chấm thi nhanh cho Giám khảo"
-      className="rounded-2xl border border-primary/20 bg-gradient-to-r from-[#FCE7F3] via-[#FDF2F8] to-[#F5E6F4] shadow-xs"
+      aria-label="Kịch bản dùng thử"
+      className="border-b border-border bg-[#F5F4F0]/90"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-xs">
-            <Zap className="size-4" aria-hidden="true" />
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 min-h-[44px] py-1.5 flex items-center gap-2.5 sm:gap-3">
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs font-semibold text-foreground whitespace-nowrap">
+            Kịch bản dùng thử
           </span>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-sm font-semibold text-foreground">
-                Chế độ Giám khảo Chấm nhanh dưới 60 giây
-              </h2>
-              <Badge className="bg-primary/12 text-primary border-primary/25 hover:bg-primary/15">
-                Dữ liệu giả lập 100%
-              </Badge>
-            </div>
-            <p className="text-xs text-muted-foreground truncate">
-              Bấm 1 chạm để chạy AI thật qua toàn bộ 6 kịch bản POS, VietQR, chống bill giả & nhắc nợ
-            </p>
-          </div>
+          <span className="hidden xl:inline-flex items-center rounded-md border border-border bg-white px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground whitespace-nowrap">
+            Dữ liệu mẫu
+          </span>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button
+        <div className="h-4 w-px bg-border shrink-0" aria-hidden="true" />
+
+        <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-x-auto py-0.5">
+          {DEMO_SCENARIOS.map((item) => {
+            const isSelected = activePreset === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onSelectPreset(item.id)}
+                className={`min-h-[32px] px-2.5 py-1 rounded-md border text-xs font-medium whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                  isSelected
+                    ? 'border-primary bg-white text-primary shadow-2xs'
+                    : 'border-border bg-white/85 text-foreground hover:bg-white hover:border-foreground/20'
+                }`}
+              >
+                <span
+                  className={`size-1.5 rounded-full shrink-0 ${item.dotClass}`}
+                  aria-hidden="true"
+                />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0 pl-1 border-l border-border/70">
+          <button
             type="button"
-            variant="outline"
-            onClick={onResetDemo}
+            onClick={() => void onResetDemo()}
             disabled={isResetting}
-            className="min-h-[44px] px-3.5 border-primary/30 bg-white text-primary hover:bg-primary/8 cursor-pointer"
+            className="min-h-[32px] px-2.5 py-1 rounded-md border border-border bg-white text-xs font-medium text-foreground hover:bg-[#FAF9F6] disabled:opacity-50 whitespace-nowrap inline-flex items-center gap-1.5 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
-            <RotateCcw className={`size-4 ${isResetting ? 'animate-spin' : ''}`} aria-hidden="true" />
-            <span>{isResetting ? 'Đang khôi phục...' : 'Reset dữ liệu mẫu'}</span>
-          </Button>
-          <Button
+            <RotateCcw
+              className={`size-3.5 text-muted-foreground ${isResetting ? 'animate-spin' : ''}`}
+              aria-hidden="true"
+            />
+            <span>{isResetting ? 'Đang khôi phục...' : 'Khôi phục'}</span>
+          </button>
+          <button
             type="button"
-            variant="ghost"
-            onClick={() => setExpanded((prev) => !prev)}
-            aria-expanded={expanded}
-            aria-label={expanded ? 'Thu gọn thanh kịch bản mẫu' : 'Mở rộng thanh kịch bản mẫu'}
-            className="min-h-[44px] min-w-[44px] text-primary hover:bg-primary/10 cursor-pointer"
+            onClick={onClose}
+            aria-label="Ẩn thanh kịch bản dùng thử"
+            className="size-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/80 inline-flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
-            {expanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
-          </Button>
+            <X className="size-3.5" aria-hidden="true" />
+          </button>
         </div>
       </div>
-
-      {expanded && (
-        <div className="border-t border-primary/15 px-4 py-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2">
-            {JUDGE_PRESET_BUTTONS.map((btn) => {
-              const Icon = btn.icon;
-              const isSelected = activePreset === btn.id;
-              const toneClass =
-                btn.tone === 'danger'
-                  ? 'border-rose-300 bg-white text-rose-800 hover:bg-rose-50'
-                  : btn.tone === 'safe'
-                    ? 'border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-50'
-                    : 'border-primary/25 bg-white text-foreground hover:bg-primary/8 hover:text-primary';
-
-              return (
-                <button
-                  key={btn.id}
-                  type="button"
-                  onClick={() => onSelectPreset(btn.id)}
-                  className={`min-h-[44px] w-full flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs font-medium transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${toneClass} ${
-                    isSelected ? 'ring-2 ring-primary border-primary shadow-xs' : ''
-                  }`}
-                >
-                  <Icon className="size-4 shrink-0" aria-hidden="true" />
-                  <span className="leading-snug">{btn.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </section>
   );
 }

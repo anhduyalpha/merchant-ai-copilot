@@ -2,8 +2,10 @@
 
 import { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import {
+  ArrowRight,
   Camera,
-  CheckCircle2,
+  Check,
+  Copy,
   ImagePlus,
   Loader2,
   MessageSquareText,
@@ -13,13 +15,10 @@ import {
   Plus,
   QrCode,
   ShieldCheck,
-  Sparkles,
   Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { fetchAssetAsBase64, fileToBase64 } from '@/lib/client-image';
@@ -29,6 +28,7 @@ import {
   VOICE_TRANSCRIPT_PRESETS,
 } from '@/lib/demo-presets';
 import type { NormalizedOrderDraft, NormalizedOrderItem } from '@/lib/orders';
+import { cleanCustomerDisplay } from '@/lib/utils';
 import { formatVND } from '@/lib/vietqr';
 import type { OrderItemRow, OrderRow, PaymentMethod } from '@/types/database';
 
@@ -68,10 +68,7 @@ interface SpeechRecognitionResultEvent {
 }
 
 export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelProps>(
-  function OrderIntakePanel(
-    { orders, onOrderCreated, onProceedToReceiptVerify },
-    ref
-  ) {
+  function OrderIntakePanel({ orders, onOrderCreated, onProceedToReceiptVerify }, ref) {
     const [inputMode, setInputMode] = useState<'chat' | 'handwritten' | 'voice'>('chat');
     const [textInput, setTextInput] = useState<string>(SLANG_CHAT_PRESETS[0].rawMessage);
     const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -83,6 +80,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
     const [isParsing, setIsParsing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isListening, setIsListening] = useState(false);
+    const [copiedCode, setCopiedCode] = useState(false);
 
     const [draft, setDraft] = useState<NormalizedOrderDraft | null>(null);
     const [reasoningVi, setReasoningVi] = useState<string>('');
@@ -100,16 +98,17 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
       textOverride?: string;
       imgOverride?: { imageBase64: string; imageMimeType: string };
     }) {
+      if (isParsing) return;
       const mode = opts?.mode ?? inputMode;
       const text = (opts?.textOverride ?? textInput).trim();
       const img = opts?.imgOverride ?? imagePayload;
 
       if (mode === 'handwritten' && !img) {
-        toast.error('Vui lòng chọn ảnh giấy ghi tay hoặc tải ảnh mẫu.');
+        toast.error('Hãy chọn ảnh giấy ghi tay hoặc dùng ảnh mẫu Bàn 2.');
         return;
       }
       if (mode !== 'handwritten' && !text) {
-        toast.error('Vui lòng nhập nội dung đơn hàng trước khi phân tích.');
+        toast.error('Hãy nhập nội dung khách đặt trước khi tính tiền.');
         return;
       }
 
@@ -129,14 +128,14 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
         });
         const data = await res.json();
         if (!res.ok || !data.ok) {
-          throw new Error(data.message || 'Không thể phân tích đơn hàng.');
+          throw new Error(data.message || 'Không thể tách món từ nội dung này.');
         }
         setDraft(data.parsed as NormalizedOrderDraft);
         setReasoningVi(data.reasoningVi || '');
         setPreviewVietqrUrl(data.previewVietqrUrl || null);
-        toast.success('AI đã bóc tách đơn hàng thành công.');
+        toast.success('Đã tách món và tính tạm tính xong.');
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Lỗi phân tích đơn hàng.');
+        toast.error(err instanceof Error ? err.message : 'Có lỗi khi tách đơn hàng.');
       } finally {
         setIsParsing(false);
       }
@@ -167,248 +166,290 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                 },
               });
             } catch (err) {
-              toast.error(err instanceof Error ? err.message : 'Không tải được ảnh mẫu viết tay.');
+              toast.error(err instanceof Error ? err.message : 'Không tải được ảnh mẫu Bàn 2.');
             }
           })();
         }
       },
     }));
 
-  function recalculateDraft(next: NormalizedOrderDraft): NormalizedOrderDraft {
-    const subtotalVnd = next.items.reduce((sum, i) => sum + i.quantity * i.unitPriceVnd, 0);
-    const discountVnd = Math.min(Math.max(0, Math.round(next.discountVnd)), subtotalVnd);
-    const totalVnd = Math.max(0, subtotalVnd - discountVnd);
-    let cashAmountVnd = next.cashAmountVnd;
-    let transferAmountVnd = next.transferAmountVnd;
+    function recalculateDraft(next: NormalizedOrderDraft): NormalizedOrderDraft {
+      const subtotalVnd = next.items.reduce((sum, i) => sum + i.quantity * i.unitPriceVnd, 0);
+      const discountVnd = Math.min(Math.max(0, Math.round(next.discountVnd)), subtotalVnd);
+      const totalVnd = Math.max(0, subtotalVnd - discountVnd);
+      let cashAmountVnd = next.cashAmountVnd;
+      let transferAmountVnd = next.transferAmountVnd;
 
-    if (next.paymentMethod === 'cash') {
-      cashAmountVnd = totalVnd;
-      transferAmountVnd = 0;
-    } else if (next.paymentMethod === 'vietqr') {
-      cashAmountVnd = 0;
-      transferAmountVnd = totalVnd;
-    } else if (next.paymentMethod === 'debt') {
-      cashAmountVnd = 0;
-      transferAmountVnd = 0;
-    } else if (next.paymentMethod === 'split') {
-      cashAmountVnd = Math.min(totalVnd, Math.max(0, Math.round(cashAmountVnd)));
-      transferAmountVnd = Math.max(0, totalVnd - cashAmountVnd);
-    }
-
-    return {
-      ...next,
-      subtotalVnd,
-      discountVnd,
-      totalVnd,
-      cashAmountVnd,
-      transferAmountVnd,
-    };
-  }
-
-  function updateItemQuantity(index: number, delta: number) {
-    if (!draft) return;
-    const updatedItems: NormalizedOrderItem[] = draft.items
-      .map((item, idx) => {
-        if (idx !== index) return item;
-        const quantity = Math.max(0, item.quantity + delta);
-        return {
-          ...item,
-          quantity,
-          lineTotalVnd: quantity * item.unitPriceVnd,
-        };
-      })
-      .filter((item) => item.quantity > 0);
-
-    if (updatedItems.length === 0) {
-      toast.info('Đơn hàng cần ít nhất 1 món.');
-      return;
-    }
-    setDraft(recalculateDraft({ ...draft, items: updatedItems }));
-  }
-
-  function updatePaymentMethod(method: PaymentMethod) {
-    if (!draft) return;
-    const base = { ...draft, paymentMethod: method };
-    if (method === 'split' && base.cashAmountVnd === 0) {
-      const cashItemsTotal = base.items
-        .filter((i) => i.paymentSplitTag === 'cash')
-        .reduce((s, i) => s + i.lineTotalVnd, 0);
-      base.cashAmountVnd = cashItemsTotal > 0 ? cashItemsTotal : Math.round(base.totalVnd / 2);
-    }
-    setDraft(recalculateDraft(base));
-  }
-
-  async function handleSaveOrder() {
-    if (!draft) return;
-    setIsSaving(true);
-    try {
-      const res = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...draft,
-          sourceType: inputMode,
-          rawInput: inputMode === 'handwritten' ? '[Ảnh giấy ghi tay]' : textInput.trim(),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.message || 'Không thể lưu đơn hàng.');
+      if (next.paymentMethod === 'cash') {
+        cashAmountVnd = totalVnd;
+        transferAmountVnd = 0;
+      } else if (next.paymentMethod === 'vietqr') {
+        cashAmountVnd = 0;
+        transferAmountVnd = totalVnd;
+      } else if (next.paymentMethod === 'debt') {
+        cashAmountVnd = 0;
+        transferAmountVnd = 0;
+      } else if (next.paymentMethod === 'split') {
+        cashAmountVnd = Math.min(totalVnd, Math.max(0, Math.round(cashAmountVnd)));
+        transferAmountVnd = Math.max(0, totalVnd - cashAmountVnd);
       }
-      setSavedOrderResult({
-        order: data.order as OrderRow,
-        vietqrUrl: (data.vietqrUrl as string | null) ?? null,
-      });
-      toast.success(`Đã tạo đơn ${data.order.order_code} thành công.`);
-      await onOrderCreated();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Lỗi lưu đơn hàng.');
-    } finally {
-      setIsSaving(false);
-    }
-  }
 
-  async function handleLoadHandwrittenSample() {
-    try {
-      const loaded = await fetchAssetAsBase64(HANDWRITTEN_ORDER_DEMO.imagePath);
-      setImagePreviewUrl(loaded.dataUrl);
-      setImagePayload({ imageBase64: loaded.imageBase64, imageMimeType: loaded.imageMimeType });
-      toast.success('Đã nạp ảnh giấy ghi tay Bàn 2.');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Không tải được ảnh mẫu.');
-    }
-  }
-
-  async function handleUploadImage(file: File | undefined) {
-    if (!file) return;
-    try {
-      const loaded = await fileToBase64(file);
-      setImagePreviewUrl(loaded.dataUrl);
-      setImagePayload({ imageBase64: loaded.imageBase64, imageMimeType: loaded.imageMimeType });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Không đọc được file ảnh.');
-    }
-  }
-
-  function toggleVoiceRecognition() {
-    if (isListening && recognitionRef.current) {
-      recognitionRef.current.stop();
-      setIsListening(false);
-      return;
-    }
-    const win = window as unknown as {
-      SpeechRecognition?: new () => SpeechRecognitionInstance;
-      webkitSpeechRecognition?: new () => SpeechRecognitionInstance;
-    };
-    const SpeechCtor = win.SpeechRecognition || win.webkitSpeechRecognition;
-    if (!SpeechCtor) {
-      toast.info('Trình duyệt không hỗ trợ micro trực tiếp. Bạn có thể chọn câu đọc mẫu bên dưới.');
-      return;
+      return {
+        ...next,
+        subtotalVnd,
+        discountVnd,
+        totalVnd,
+        cashAmountVnd,
+        transferAmountVnd,
+      };
     }
 
-    const recognition = new SpeechCtor();
-    recognition.lang = 'vi-VN';
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.onresult = (event) => {
-      let transcript = '';
-      for (let i = 0; i < event.results.length; i++) {
-        transcript += event.results[i][0].transcript + ' ';
+    function updateItemQuantity(index: number, delta: number) {
+      if (!draft) return;
+      const updatedItems: NormalizedOrderItem[] = draft.items
+        .map((item, idx) => {
+          if (idx !== index) return item;
+          const quantity = Math.max(0, item.quantity + delta);
+          return {
+            ...item,
+            quantity,
+            lineTotalVnd: quantity * item.unitPriceVnd,
+          };
+        })
+        .filter((item) => item.quantity > 0);
+
+      if (updatedItems.length === 0) {
+        toast.info('Đơn hàng cần giữ lại ít nhất 1 món.');
+        return;
       }
-      setTextInput(transcript.trim());
-    };
-    recognition.onerror = () => {
-      setIsListening(false);
-      toast.error('Không thu được âm thanh micro. Hãy thử lại hoặc chọn mẫu giọng nói.');
-    };
-    recognition.onend = () => {
-      setIsListening(false);
-    };
+      setDraft(recalculateDraft({ ...draft, items: updatedItems }));
+    }
 
-    recognitionRef.current = recognition;
-    setIsListening(true);
-    recognition.start();
-  }
+    function updatePaymentMethod(method: PaymentMethod) {
+      if (!draft) return;
+      const base = { ...draft, paymentMethod: method };
+      if (method === 'split' && base.cashAmountVnd === 0) {
+        const cashItemsTotal = base.items
+          .filter((i) => i.paymentSplitTag === 'cash')
+          .reduce((s, i) => s + i.lineTotalVnd, 0);
+        base.cashAmountVnd = cashItemsTotal > 0 ? cashItemsTotal : Math.round(base.totalVnd / 2);
+      }
+      setDraft(recalculateDraft(base));
+    }
 
-  const activeQrUrl = savedOrderResult?.vietqrUrl ?? previewVietqrUrl;
-  const activeQrOrder = savedOrderResult?.order;
+    async function handleSaveOrder() {
+      if (!draft || isSaving) return;
+      setIsSaving(true);
+      try {
+        const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...draft,
+            sourceType: inputMode,
+            rawInput: inputMode === 'handwritten' ? '[Ảnh giấy ghi tay]' : textInput.trim(),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(data.message || 'Không thể lưu đơn hàng.');
+        }
+        setSavedOrderResult({
+          order: data.order as OrderRow,
+          vietqrUrl: (data.vietqrUrl as string | null) ?? null,
+        });
+        toast.success(`Đã lưu đơn ${data.order.order_code}.`);
+        await onOrderCreated();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Lỗi lưu đơn hàng.');
+      } finally {
+        setIsSaving(false);
+      }
+    }
 
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-      {/* Left column: Multimodal Input + AI Draft Preview */}
-      <div className="lg:col-span-7 space-y-5">
-        <Card className="border-border bg-card shadow-xs">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Sparkles className="size-4 text-primary" aria-hidden="true" />
-              Nhận đơn đa phương thức
-            </CardTitle>
-            <CardDescription>
-              Nhập tin nhắn tiếng lóng Zalo, nói qua micro hoặc chụp giấy ghi tay để AI tự khớp thực đơn.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Mode Switcher */}
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => setInputMode('chat')}
-                className={`min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border text-xs sm:text-sm font-medium transition-colors cursor-pointer ${
-                  inputMode === 'chat'
-                    ? 'bg-primary text-primary-foreground border-primary shadow-xs'
-                    : 'bg-secondary/50 text-foreground border-border hover:bg-secondary'
-                }`}
-              >
-                <MessageSquareText className="size-4 shrink-0" aria-hidden="true" />
-                <span>Chat tiếng lóng</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setInputMode('handwritten')}
-                className={`min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border text-xs sm:text-sm font-medium transition-colors cursor-pointer ${
-                  inputMode === 'handwritten'
-                    ? 'bg-primary text-primary-foreground border-primary shadow-xs'
-                    : 'bg-secondary/50 text-foreground border-border hover:bg-secondary'
-                }`}
-              >
-                <Camera className="size-4 shrink-0" aria-hidden="true" />
-                <span>Giấy ghi tay</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setInputMode('voice')}
-                className={`min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl border text-xs sm:text-sm font-medium transition-colors cursor-pointer ${
-                  inputMode === 'voice'
-                    ? 'bg-primary text-primary-foreground border-primary shadow-xs'
-                    : 'bg-secondary/50 text-foreground border-border hover:bg-secondary'
-                }`}
-              >
-                <Mic className="size-4 shrink-0" aria-hidden="true" />
-                <span>Giọng nói</span>
-              </button>
+    async function handleLoadHandwrittenSample() {
+      try {
+        const loaded = await fetchAssetAsBase64(HANDWRITTEN_ORDER_DEMO.imagePath);
+        setImagePreviewUrl(loaded.dataUrl);
+        setImagePayload({ imageBase64: loaded.imageBase64, imageMimeType: loaded.imageMimeType });
+        toast.success('Đã mở ảnh giấy ghi tay Bàn 2.');
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Không tải được ảnh mẫu.');
+      }
+    }
+
+    async function handleUploadImage(file: File | undefined) {
+      if (!file) return;
+      try {
+        const loaded = await fileToBase64(file);
+        setImagePreviewUrl(loaded.dataUrl);
+        setImagePayload({ imageBase64: loaded.imageBase64, imageMimeType: loaded.imageMimeType });
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Không đọc được tệp ảnh.');
+      }
+    }
+
+    async function handleCopyOrderCode(code: string) {
+      try {
+        await navigator.clipboard.writeText(code);
+        setCopiedCode(true);
+        toast.success(`Đã sao chép mã đơn ${code}.`);
+        setTimeout(() => setCopiedCode(false), 1800);
+      } catch {
+        toast.error('Không sao chép được, vui lòng chép thủ công.');
+      }
+    }
+
+    function toggleVoiceRecognition() {
+      if (isListening && recognitionRef.current) {
+        recognitionRef.current.stop();
+        setIsListening(false);
+        return;
+      }
+      const win = window as unknown as {
+        SpeechRecognition?: new () => SpeechRecognitionInstance;
+        webkitSpeechRecognition?: new () => SpeechRecognitionInstance;
+      };
+      const SpeechCtor = win.SpeechRecognition || win.webkitSpeechRecognition;
+      if (!SpeechCtor) {
+        toast.info('Trình duyệt không hỗ trợ micro. Bạn có thể chọn câu đọc mẫu bên dưới.');
+        return;
+      }
+
+      const recognition = new SpeechCtor();
+      recognition.lang = 'vi-VN';
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.onresult = (event) => {
+        let transcript = '';
+        for (let i = 0; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript + ' ';
+        }
+        setTextInput(transcript.trim());
+      };
+      recognition.onerror = () => {
+        setIsListening(false);
+        toast.error('Không thu được âm thanh micro. Hãy thử lại hoặc chọn mẫu bên dưới.');
+      };
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current = recognition;
+      setIsListening(true);
+      recognition.start();
+    }
+
+    const activeQrUrl = savedOrderResult?.vietqrUrl ?? previewVietqrUrl;
+    const activeQrOrder = savedOrderResult?.order;
+    const qrAmountVnd = activeQrOrder
+      ? activeQrOrder.transfer_amount_vnd > 0
+        ? activeQrOrder.transfer_amount_vnd
+        : activeQrOrder.total_vnd
+      : draft
+        ? draft.transferAmountVnd > 0
+          ? draft.transferAmountVnd
+          : draft.totalVnd
+        : 0;
+
+    const saveCtaLabel =
+      draft?.paymentMethod === 'debt'
+        ? 'Lưu đơn vào sổ nợ'
+        : draft?.paymentMethod === 'cash'
+          ? 'Xác nhận thu tiền mặt'
+          : 'Chốt đơn & Tạo mã QR';
+
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        {/* Left column: Order Intake + Editable Order Slip */}
+        <div className="lg:col-span-7 space-y-5">
+          <section aria-labelledby="order-intake-heading" className="surface-card rounded-xl p-5 space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2
+                  id="order-intake-heading"
+                  className="text-[15px] font-semibold tracking-tight text-foreground"
+                >
+                  Ghi đơn nhanh
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Dán tin nhắn khách đặt, chụp giấy ghi tay hoặc đọc món.
+                </p>
+              </div>
+            </div>
+
+            {/* Warm-stone Segmented Input Switcher */}
+            <div
+              role="tablist"
+              aria-label="Cách nhập đơn hàng"
+              className="grid grid-cols-3 gap-1 rounded-lg bg-[#F4F2EC] p-1"
+            >
+              {(
+                [
+                  { id: 'chat', label: 'Tin nhắn', icon: MessageSquareText },
+                  { id: 'handwritten', label: 'Ảnh viết tay', icon: Camera },
+                  { id: 'voice', label: 'Giọng nói', icon: Mic },
+                ] as const
+              ).map((tab) => {
+                const Icon = tab.icon;
+                const active = inputMode === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setInputMode(tab.id)}
+                    className={`min-h-[40px] flex items-center justify-center gap-1 sm:gap-1.5 rounded-md px-1.5 sm:px-2.5 text-[11.5px] sm:text-[13px] font-medium transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                      active
+                        ? 'bg-white text-foreground shadow-2xs'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Icon
+                      className={`size-3.5 sm:size-4 shrink-0 ${active ? 'text-primary' : ''}`}
+                      aria-hidden="true"
+                    />
+                    <span className="whitespace-nowrap">{tab.label}</span>
+                  </button>
+                );
+              })}
             </div>
 
             {inputMode === 'chat' && (
               <div className="space-y-3">
-                <div className="flex flex-wrap gap-2">
-                  {SLANG_CHAT_PRESETS.map((preset) => (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      onClick={() => setTextInput(preset.rawMessage)}
-                      className="min-h-[36px] rounded-full border border-primary/25 bg-secondary/70 px-3 py-1.5 text-xs font-medium text-secondary-foreground hover:bg-secondary cursor-pointer transition-colors"
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
+                <div className="flex flex-wrap gap-1.5">
+                  {SLANG_CHAT_PRESETS.map((preset) => {
+                    const isCurrent = textInput.trim() === preset.rawMessage.trim();
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => setTextInput(preset.rawMessage)}
+                        className={`min-h-[36px] rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                          isCurrent
+                            ? 'border-primary/40 bg-[#FAF9F6] text-foreground'
+                            : 'border-border bg-white text-muted-foreground hover:text-foreground hover:bg-[#FAF9F6]'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
                 </div>
-                <Textarea
-                  value={textInput}
-                  onChange={(e) => setTextInput(e.target.value)}
-                  rows={3}
-                  placeholder="Ví dụ: Bàn 3 thêm 2 bx ít ngọt, 1 cf sữa nhiều đá, giảm 10k khách quen..."
-                  className="bg-white border-border focus-visible:ring-primary text-sm"
-                />
+                <div>
+                  <label htmlFor="order-text-input" className="sr-only">
+                    Nội dung tin nhắn đặt món
+                  </label>
+                  <Textarea
+                    id="order-text-input"
+                    value={textInput}
+                    onChange={(e) => setTextInput(e.target.value)}
+                    rows={3}
+                    placeholder="Ví dụ: Bàn 3 thêm 2 bx ít ngọt, 1 cf sữa nhiều đá, giảm 10k khách quen..."
+                    className="bg-white border-input text-sm leading-relaxed rounded-lg resize-none focus-visible:ring-primary"
+                  />
+                </div>
               </div>
             )}
 
@@ -419,17 +460,17 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                     type="button"
                     variant={isListening ? 'destructive' : 'outline'}
                     onClick={toggleVoiceRecognition}
-                    className="min-h-[44px] border-primary/30 cursor-pointer"
+                    className="min-h-[44px] rounded-lg border-input bg-white text-foreground hover:bg-[#FAF9F6] cursor-pointer"
                   >
                     {isListening ? (
                       <>
-                        <MicOff className="size-4 animate-pulse" aria-hidden="true" />
-                        <span>Dừng thu âm</span>
+                        <MicOff className="size-4" aria-hidden="true" />
+                        <span>Dừng ghi âm</span>
                       </>
                     ) : (
                       <>
                         <Mic className="size-4 text-primary" aria-hidden="true" />
-                        <span>Bấm để nói tiếng Việt</span>
+                        <span>Bắt đầu đọc món</span>
                       </>
                     )}
                   </Button>
@@ -438,7 +479,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                       key={preset.id}
                       type="button"
                       onClick={() => setTextInput(preset.transcript)}
-                      className="min-h-[36px] rounded-full border border-primary/25 bg-secondary/70 px-3 py-1.5 text-xs font-medium text-secondary-foreground hover:bg-secondary cursor-pointer"
+                      className="min-h-[36px] rounded-lg border border-border bg-[#FAF9F6] px-3 py-1.5 text-xs font-medium text-foreground hover:bg-[#F3F1EC] cursor-pointer transition-colors"
                     >
                       {preset.label}
                     </button>
@@ -448,8 +489,8 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                   value={textInput}
                   onChange={(e) => setTextInput(e.target.value)}
                   rows={3}
-                  placeholder="Nội dung giọng nói sẽ hiển thị tại đây..."
-                  className="bg-white border-border focus-visible:ring-primary text-sm"
+                  placeholder="Lời đọc món sẽ hiện ở đây..."
+                  className="bg-white border-input text-sm leading-relaxed rounded-lg resize-none focus-visible:ring-primary"
                 />
               </div>
             )}
@@ -468,33 +509,37 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                     type="button"
                     variant="outline"
                     onClick={() => fileInputRef.current?.click()}
-                    className="min-h-[44px] border-primary/30 cursor-pointer"
+                    className="min-h-[44px] rounded-lg border-input bg-white text-foreground hover:bg-[#FAF9F6] cursor-pointer"
                   >
                     <ImagePlus className="size-4 text-primary" aria-hidden="true" />
-                    <span>Tải ảnh giấy ghi tay</span>
+                    <span>Chọn ảnh từ máy</span>
                   </Button>
                   <Button
                     type="button"
-                    variant="secondary"
+                    variant="outline"
                     onClick={handleLoadHandwrittenSample}
-                    className="min-h-[44px] cursor-pointer"
+                    className="min-h-[44px] rounded-lg border-border bg-[#FAF9F6] text-foreground hover:bg-[#F3F1EC] cursor-pointer"
                   >
-                    <FileImageIcon />
-                    <span>Nạp ảnh mẫu Bàn 2</span>
+                    <Camera className="size-4 text-muted-foreground" aria-hidden="true" />
+                    <span>Dùng ảnh mẫu Bàn 2</span>
                   </Button>
                 </div>
 
                 {imagePreviewUrl ? (
-                  <div className="relative rounded-xl border border-border bg-muted/40 p-2">
+                  <div className="rounded-lg border border-border bg-[#FAF9F6] p-2.5">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={imagePreviewUrl}
-                      alt="Ảnh giấy ghi tay order"
-                      className="max-h-56 w-full object-contain rounded-lg"
+                      alt="Ảnh giấy ghi tay đặt món"
+                      className="max-h-56 w-full object-contain rounded-md"
                     />
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-dashed border-primary/30 bg-secondary/30 p-6 text-center text-xs text-muted-foreground">
-                    Chọn ảnh giấy ghi tay từ máy hoặc bấm &ldquo;Nạp ảnh mẫu Bàn 2&rdquo; để AI Vision đọc món.
+                  <div className="rounded-lg border border-dashed border-input bg-[#FAF9F6] px-5 py-6 flex flex-col items-center text-center gap-2">
+                    <HandwrittenSlipIllustration />
+                    <p className="text-xs text-muted-foreground max-w-xs">
+                      Tải ảnh giấy ghi tay của nhân viên hoặc dùng ảnh mẫu Bàn 2 để tự động đọc món.
+                    </p>
                   </div>
                 )}
               </div>
@@ -504,112 +549,149 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
               type="button"
               onClick={() => void runParseOrder()}
               disabled={isParsing}
-              className="min-h-[44px] w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold cursor-pointer"
+              className="min-h-[44px] w-full rounded-lg bg-primary text-primary-foreground hover:bg-[#8B0054] font-medium text-sm transition-colors cursor-pointer"
             >
               {isParsing ? (
                 <>
                   <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                  <span>AI đang bóc tách thực đơn...</span>
+                  <span>Đang tách món và tính tiền...</span>
                 </>
               ) : (
                 <>
-                  <Sparkles className="size-4" aria-hidden="true" />
-                  <span>Phân tích đơn bằng AI</span>
+                  <span>Lên đơn & Tính tiền</span>
+                  <ArrowRight className="size-4" aria-hidden="true" />
                 </>
               )}
             </Button>
-          </CardContent>
-        </Card>
+          </section>
 
-        {/* Editable AI Draft Preview */}
-        {draft && (
-          <Card className="border-primary/25 bg-card shadow-xs">
-            <CardHeader className="pb-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <CardTitle className="text-base font-semibold">
-                  Xem trước đơn đã bóc tách
-                </CardTitle>
-                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">
-                  Độ tin cậy {Math.round(draft.confidence * 100)}%
-                </Badge>
+          {/* Skeleton loader during order parsing */}
+          {isParsing && (
+            <section
+              aria-label="Đang phân tích đơn hàng"
+              className="surface-card rounded-xl p-5 space-y-4 animate-pulse"
+            >
+              <div className="flex items-center justify-between">
+                <div className="h-4 w-36 rounded bg-[#F0EDE6]" />
+                <div className="h-5 w-24 rounded-full bg-[#F0EDE6]" />
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="h-10 rounded-lg bg-[#F5F4F0]" />
+                <div className="h-10 rounded-lg bg-[#F5F4F0]" />
+              </div>
+              <div className="space-y-2.5 pt-1">
+                <div className="h-12 rounded-lg bg-[#F5F4F0]" />
+                <div className="h-12 rounded-lg bg-[#F5F4F0]" />
+                <div className="h-12 rounded-lg bg-[#F5F4F0]" />
+              </div>
+            </section>
+          )}
+
+          {/* Editable Draft Preview */}
+          {!isParsing && draft && (
+            <section aria-labelledby="draft-heading" className="surface-card rounded-xl p-5 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 id="draft-heading" className="text-[15px] font-semibold tracking-tight text-foreground">
+                  Chi tiết đơn hàng
+                </h3>
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-[#0F766E]/20 bg-[#F0FDFA] px-2 py-0.5 text-xs font-medium text-[#0F766E] tabular-nums">
+                  <span className="size-1.5 rounded-full bg-[#0F766E]" aria-hidden="true" />
+                  Khớp thực đơn {Math.round(draft.confidence * 100)}%
+                </span>
+              </div>
+
               {reasoningVi && (
-                <p className="text-xs text-muted-foreground leading-relaxed">{reasoningVi}</p>
+                <p className="text-xs text-muted-foreground leading-relaxed rounded-lg bg-[#FAF9F6] border border-border px-3 py-2">
+                  {reasoningVi}
+                </p>
               )}
-            </CardHeader>
-            <CardContent className="space-y-4">
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Bàn / Kênh</label>
+                  <label htmlFor="draft-channel" className="text-xs font-medium text-muted-foreground">
+                    Bàn / Kênh đặt
+                  </label>
                   <Input
+                    id="draft-channel"
                     value={draft.tableOrChannel}
                     onChange={(e) => setDraft({ ...draft, tableOrChannel: e.target.value })}
-                    className="mt-1 h-10 bg-white"
+                    className="mt-1 h-10 bg-white rounded-lg"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Khách hàng</label>
+                  <label htmlFor="draft-customer" className="text-xs font-medium text-muted-foreground">
+                    Tên khách hàng
+                  </label>
                   <Input
+                    id="draft-customer"
                     value={draft.customerName ?? ''}
                     placeholder="Khách lẻ"
                     onChange={(e) =>
                       setDraft({ ...draft, customerName: e.target.value || null })
                     }
-                    className="mt-1 h-10 bg-white"
+                    className="mt-1 h-10 bg-white rounded-lg"
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
+              {/* Hairline-divided Line Items */}
+              <div className="rounded-lg border border-border divide-y divide-border bg-white overflow-hidden">
                 {draft.items.map((item, idx) => (
                   <div
                     key={`${item.matchedItemName}-${idx}`}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-secondary/25 px-3 py-2.5"
+                    className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5"
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-semibold text-foreground">
+                        <span className="text-sm font-medium text-foreground">
                           {item.matchedItemName}
                         </span>
                         {item.paymentSplitTag === 'cash' && (
-                          <Badge variant="outline" className="text-[11px] border-amber-300 bg-amber-50 text-amber-800">
-                            Thu tiền mặt
-                          </Badge>
+                          <span className="inline-flex items-center rounded border border-[#B45309]/25 bg-[#FFFBEB] px-1.5 py-0.5 text-[11px] font-medium text-[#B45309]">
+                            Tiền mặt
+                          </span>
                         )}
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                        <span>{formatVND(item.unitPriceVnd)} / phần</span>
+                        <span className="font-mono tabular-nums">
+                          {formatVND(item.unitPriceVnd)}
+                        </span>
                         {item.modifiers.map((mod, mIdx) => (
-                          <Badge key={mIdx} variant="secondary" className="text-[11px]">
+                          <span
+                            key={mIdx}
+                            className="inline-flex items-center rounded bg-[#F4F2EC] px-1.5 py-0.5 text-[11px] text-[#57534E]"
+                          >
                             {mod}
-                          </Badge>
+                          </span>
                         ))}
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <Button
+                      <button
                         type="button"
-                        variant="outline"
-                        size="icon"
                         onClick={() => updateItemQuantity(idx, -1)}
                         aria-label={`Giảm số lượng ${item.matchedItemName}`}
-                        className="size-9 cursor-pointer"
+                        className="size-9 rounded-md border border-border bg-white text-muted-foreground hover:text-foreground hover:bg-[#FAF9F6] inline-flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                       >
-                        {item.quantity === 1 ? <Trash2 className="size-3.5" /> : <Minus className="size-3.5" />}
-                      </Button>
-                      <span className="w-6 text-center text-sm font-semibold">{item.quantity}</span>
-                      <Button
+                        {item.quantity === 1 ? (
+                          <Trash2 className="size-3.5" />
+                        ) : (
+                          <Minus className="size-3.5" />
+                        )}
+                      </button>
+                      <span className="w-6 text-center font-mono tabular-nums text-sm font-semibold">
+                        {item.quantity}
+                      </span>
+                      <button
                         type="button"
-                        variant="outline"
-                        size="icon"
                         onClick={() => updateItemQuantity(idx, 1)}
                         aria-label={`Tăng số lượng ${item.matchedItemName}`}
-                        className="size-9 cursor-pointer"
+                        className="size-9 rounded-md border border-border bg-white text-muted-foreground hover:text-foreground hover:bg-[#FAF9F6] inline-flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                       >
                         <Plus className="size-3.5" />
-                      </Button>
-                      <span className="w-24 text-right text-sm font-semibold text-primary">
+                      </button>
+                      <span className="w-24 text-right font-mono tabular-nums text-sm font-semibold text-foreground">
                         {formatVND(item.lineTotalVnd)}
                       </span>
                     </div>
@@ -617,35 +699,47 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                 ))}
               </div>
 
-              {/* Payment method + Discount */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {(
-                  [
-                    { id: 'vietqr', label: 'VietQR' },
-                    { id: 'cash', label: 'Tiền mặt' },
-                    { id: 'split', label: 'Tách tiền' },
-                    { id: 'debt', label: 'Ghi sổ nợ' },
-                  ] as const
-                ).map((pm) => (
-                  <button
-                    key={pm.id}
-                    type="button"
-                    onClick={() => updatePaymentMethod(pm.id)}
-                    className={`min-h-[40px] rounded-xl border px-2 text-xs font-medium cursor-pointer transition-colors ${
-                      draft.paymentMethod === pm.id
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'bg-white text-foreground border-border hover:bg-secondary/50'
-                    }`}
-                  >
-                    {pm.label}
-                  </button>
-                ))}
+              {/* Payment Method Selector */}
+              <div className="space-y-1.5">
+                <span className="text-xs font-medium text-muted-foreground">
+                  Hình thức thanh toán
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 rounded-lg bg-[#F4F2EC] p-1">
+                  {(
+                    [
+                      { id: 'vietqr', label: 'VietQR' },
+                      { id: 'cash', label: 'Tiền mặt' },
+                      { id: 'split', label: 'Tách tiền' },
+                      { id: 'debt', label: 'Ghi sổ nợ' },
+                    ] as const
+                  ).map((pm) => {
+                    const active = draft.paymentMethod === pm.id;
+                    return (
+                      <button
+                        key={pm.id}
+                        type="button"
+                        onClick={() => updatePaymentMethod(pm.id)}
+                        className={`min-h-[38px] rounded-md px-2 text-xs font-medium cursor-pointer transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                          active
+                            ? 'bg-white text-foreground shadow-2xs'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                      >
+                        {pm.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl bg-muted/50 p-3 text-sm">
+              {/* Discount & Cash Split Inputs */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-lg bg-[#FAF9F6] border border-border p-3">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground">Giảm giá khách quen</label>
+                  <label htmlFor="draft-discount" className="text-xs font-medium text-muted-foreground">
+                    Giảm giá (VND)
+                  </label>
                   <Input
+                    id="draft-discount"
                     type="number"
                     min={0}
                     step={1000}
@@ -658,13 +752,16 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                         })
                       )
                     }
-                    className="mt-1 h-9 bg-white"
+                    className="mt-1 h-9 bg-white font-mono tabular-nums rounded-md"
                   />
                 </div>
                 {draft.paymentMethod === 'split' && (
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground">Thu tiền mặt</label>
+                    <label htmlFor="draft-cash" className="text-xs font-medium text-muted-foreground">
+                      Khách trả tiền mặt (VND)
+                    </label>
                     <Input
+                      id="draft-cash"
                       type="number"
                       min={0}
                       step={1000}
@@ -677,31 +774,44 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                           })
                         )
                       }
-                      className="mt-1 h-9 bg-white"
+                      className="mt-1 h-9 bg-white font-mono tabular-nums rounded-md"
                     />
                   </div>
                 )}
               </div>
 
+              {/* Totals Breakdown */}
               <div className="space-y-1.5 border-t border-border pt-3 text-sm">
                 <div className="flex justify-between text-muted-foreground">
                   <span>Tạm tính</span>
-                  <span>{formatVND(draft.subtotalVnd)}</span>
+                  <span className="font-mono tabular-nums">{formatVND(draft.subtotalVnd)}</span>
                 </div>
                 {draft.discountVnd > 0 && (
-                  <div className="flex justify-between text-emerald-700">
+                  <div className="flex justify-between text-[#0F766E]">
                     <span>Giảm giá</span>
-                    <span>-{formatVND(draft.discountVnd)}</span>
+                    <span className="font-mono tabular-nums">-{formatVND(draft.discountVnd)}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-base font-bold text-foreground">
-                  <span>Tổng thanh toán</span>
-                  <span className="text-primary">{formatVND(draft.totalVnd)}</span>
+                <div className="flex justify-between items-baseline pt-1 text-base font-semibold text-foreground">
+                  <span>Tổng cần thu</span>
+                  <span className="font-mono tabular-nums text-lg font-bold text-foreground">
+                    {formatVND(draft.totalVnd)}
+                  </span>
                 </div>
                 {draft.paymentMethod === 'split' && (
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Tiền mặt: {formatVND(draft.cashAmountVnd)}</span>
-                    <span>Chuyển khoản VietQR: {formatVND(draft.transferAmountVnd)}</span>
+                  <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground pt-1 border-t border-dashed border-border">
+                    <span>
+                      Tiền mặt:{' '}
+                      <strong className="font-mono tabular-nums text-foreground">
+                        {formatVND(draft.cashAmountVnd)}
+                      </strong>
+                    </span>
+                    <span>
+                      Chuyển khoản QR:{' '}
+                      <strong className="font-mono tabular-nums text-primary">
+                        {formatVND(draft.transferAmountVnd)}
+                      </strong>
+                    </span>
                   </div>
                 )}
               </div>
@@ -710,153 +820,264 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                 type="button"
                 onClick={handleSaveOrder}
                 disabled={isSaving}
-                className="min-h-[44px] w-full bg-primary text-primary-foreground hover:bg-primary/90 font-semibold cursor-pointer"
+                className="min-h-[44px] w-full rounded-lg bg-primary text-primary-foreground hover:bg-[#8B0054] font-medium cursor-pointer"
               >
                 {isSaving ? (
                   <>
                     <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                    <span>Đang lưu đơn hàng...</span>
+                    <span>Đang lưu đơn...</span>
                   </>
                 ) : (
                   <>
                     <QrCode className="size-4" aria-hidden="true" />
-                    <span>Tạo Đơn & Sinh VietQR</span>
+                    <span>{saveCtaLabel}</span>
                   </>
                 )}
               </Button>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+            </section>
+          )}
+        </div>
 
-      {/* Right column: Dynamic VietQR Card + Recent Orders */}
-      <div className="lg:col-span-5 space-y-5">
-        <Card className="border-primary/25 bg-card shadow-xs">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <QrCode className="size-4 text-primary" aria-hidden="true" />
-              Mã VietQR Động Theo Đơn
-            </CardTitle>
-            <CardDescription>
-              Tự động điền chính xác số tiền cần chuyển khoản và mã đơn hàng.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        {/* Right column: Countertop Payment Stand (VietQR) + Recent Orders */}
+        <div className="lg:col-span-5 space-y-5">
+          <section aria-labelledby="vietqr-heading" className="surface-card rounded-xl p-5 space-y-4">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <h2 id="vietqr-heading" className="text-[15px] font-semibold tracking-tight text-foreground">
+                  Mã QR thanh toán
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Tự điền đúng số tiền và mã đơn hàng.
+                </p>
+              </div>
+              {activeQrUrl && (
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-medium shrink-0 ${
+                    activeQrOrder
+                      ? 'border-[#0F766E]/25 bg-[#F0FDFA] text-[#0F766E]'
+                      : 'border-[#B45309]/25 bg-[#FFFBEB] text-[#B45309]'
+                  }`}
+                >
+                  <span
+                    className={`size-1.5 rounded-full ${
+                      activeQrOrder ? 'bg-[#0F766E]' : 'bg-[#B45309]'
+                    }`}
+                    aria-hidden="true"
+                  />
+                  {activeQrOrder ? 'Đã chốt đơn' : 'Tạm tính'}
+                </span>
+              )}
+            </div>
+
             {activeQrUrl ? (
-              <div className="flex flex-col items-center rounded-2xl border border-primary/20 bg-gradient-to-b from-[#FDF2F8] to-white p-4 text-center">
-                {activeQrOrder ? (
-                  <Badge className="mb-2 bg-primary text-primary-foreground">
-                    Đơn {activeQrOrder.order_code} • Đã lưu hệ thống
-                  </Badge>
-                ) : (
-                  <Badge variant="secondary" className="mb-2">
-                    Mã QR Tạm tính • Bấm Tạo Đơn để chốt mã
-                  </Badge>
-                )}
-                <img
-                  src={activeQrUrl}
-                  alt="Mã VietQR thanh toán động"
-                  className="w-60 h-auto rounded-xl border border-border bg-white p-1 shadow-xs"
-                />
-                {activeQrOrder && (
-                  <div className="mt-3 w-full space-y-2">
-                    <p className="text-sm font-semibold text-foreground">
-                      Số tiền quét QR:{' '}
-                      <span className="text-primary">
-                        {formatVND(
-                          activeQrOrder.transfer_amount_vnd > 0
-                            ? activeQrOrder.transfer_amount_vnd
-                            : activeQrOrder.total_vnd
-                        )}
-                      </span>
+              <div className="rounded-xl border border-border bg-[#FAF9F6] overflow-hidden">
+                {/* Countertop Receipt Stand Header */}
+                <div className="px-4 py-3 flex items-center justify-between text-xs border-b border-dashed border-border bg-white/70">
+                  <div>
+                    <p className="font-semibold text-foreground">TIỆM CÀ PHÊ MỘC</p>
+                    <p className="text-[11px] text-muted-foreground font-mono">MB Bank • 0123456789</p>
+                  </div>
+                  {activeQrOrder && (
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyOrderCode(activeQrOrder.order_code)}
+                      className="min-h-[32px] px-2.5 rounded-md border border-border bg-white text-xs font-mono font-semibold text-foreground hover:bg-[#FAF9F6] inline-flex items-center gap-1.5 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    >
+                      <span>{activeQrOrder.order_code}</span>
+                      {copiedCode ? (
+                        <Check className="size-3.5 text-[#0F766E]" aria-hidden="true" />
+                      ) : (
+                        <Copy className="size-3 text-muted-foreground" aria-hidden="true" />
+                      )}
+                    </button>
+                  )}
+                </div>
+
+                {/* QR Frame */}
+                <div className="p-4 flex flex-col items-center text-center">
+                  <div className="rounded-xl border border-border bg-white p-2.5 shadow-2xs">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={activeQrUrl}
+                      alt="Mã VietQR thanh toán theo đơn"
+                      className="w-52 h-auto rounded-md"
+                    />
+                  </div>
+
+                  <div className="mt-3.5 space-y-0.5">
+                    <p className="text-[11px] font-medium text-muted-foreground">
+                      Số tiền cần chuyển khoản
                     </p>
+                    <p className="font-mono tabular-nums text-2xl font-bold tracking-tight text-foreground">
+                      {formatVND(qrAmountVnd)}
+                    </p>
+                  </div>
+
+                  {activeQrOrder ? (
                     <Button
                       type="button"
                       variant="outline"
                       onClick={() => onProceedToReceiptVerify(activeQrOrder)}
-                      className="min-h-[44px] w-full border-primary/35 text-primary hover:bg-primary/8 cursor-pointer"
+                      className="mt-4 min-h-[44px] w-full rounded-lg border-primary/35 bg-white text-primary hover:bg-primary/5 font-medium cursor-pointer"
                     >
                       <ShieldCheck className="size-4" aria-hidden="true" />
-                      <span>Chuyển sang Đối soát Bill cho {activeQrOrder.order_code}</span>
+                      <span>Soát chuyển khoản đơn {activeQrOrder.order_code}</span>
                     </Button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-border bg-secondary/20 p-8 text-center text-xs text-muted-foreground">
-                Phân tích đơn hàng bên trái để hiển thị mã VietQR chính xác theo số tiền chuyển khoản.
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="border-border bg-card shadow-xs">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">Đơn hàng gần nhất</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2.5 max-h-[380px] overflow-y-auto">
-            {orders.slice(0, 8).map((order) => (
-              <div
-                key={order.id}
-                className="flex items-center justify-between gap-3 rounded-xl border border-border bg-white p-3"
-              >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-sm font-bold text-foreground">
-                      {order.order_code}
-                    </span>
-                    <OrderStatusBadge status={order.status} />
-                  </div>
-                  <p className="text-xs text-muted-foreground truncate mt-0.5">
-                    {order.table_or_channel}
-                    {order.customer_name ? ` • ${order.customer_name}` : ''}
-                  </p>
-                </div>
-                <div className="text-right shrink-0 space-y-1">
-                  <p className="text-sm font-bold text-primary">{formatVND(order.total_vnd)}</p>
-                  {order.status === 'pending_payment' && (
-                    <button
-                      type="button"
-                      onClick={() => onProceedToReceiptVerify(order)}
-                      className="text-xs font-medium text-primary hover:underline cursor-pointer"
-                    >
-                      Đối soát bill
-                    </button>
+                  ) : (
+                    <p className="mt-3 text-[11px] text-muted-foreground">
+                      Bấm &ldquo;{saveCtaLabel}&rdquo; bên trái để chốt mã đơn chính thức.
+                    </p>
                   )}
                 </div>
               </div>
-            ))}
-          </CardContent>
-        </Card>
+            ) : (
+              <div className="rounded-xl border border-dashed border-input bg-[#FAF9F6] px-6 py-10 flex flex-col items-center text-center gap-3">
+                <QrStandIllustration />
+                <p className="text-xs text-muted-foreground max-w-[240px] leading-relaxed">
+                  Lên đơn để tạo mã thanh toán tự động.
+                </p>
+              </div>
+            )}
+          </section>
+
+          {/* Recent Orders Ledger */}
+          <section aria-labelledby="recent-orders-heading" className="surface-card rounded-xl overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-border flex items-center justify-between">
+              <h2 id="recent-orders-heading" className="text-[15px] font-semibold tracking-tight text-foreground">
+                Đơn gần đây
+              </h2>
+              <span className="font-mono tabular-nums text-xs text-muted-foreground">
+                {orders.length} đơn
+              </span>
+            </div>
+
+            {orders.length === 0 ? (
+              <div className="px-5 py-8 text-center text-xs text-muted-foreground">
+                Chưa có đơn hàng nào hôm nay.
+              </div>
+            ) : (
+              <div className="divide-y divide-border max-h-[360px] overflow-y-auto">
+                {orders.slice(0, 8).map((order) => {
+                  const displayCustomer = cleanCustomerDisplay(order.customer_name);
+                  const showCustomer =
+                    displayCustomer &&
+                    displayCustomer.toLowerCase() !== order.table_or_channel.toLowerCase();
+
+                  return (
+                    <div
+                      key={order.id}
+                      className="px-5 py-3 flex items-center justify-between gap-3 hover:bg-[#FAF9F6]/70 transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-xs font-semibold text-foreground">
+                            {order.order_code}
+                          </span>
+                          <OrderStatusIndicator status={order.status} />
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">
+                          {order.table_or_channel}
+                          {showCustomer ? ` • ${displayCustomer}` : ''}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0 space-y-0.5">
+                        <p className="font-mono tabular-nums text-sm font-semibold text-foreground">
+                          {formatVND(order.total_vnd)}
+                        </p>
+                        {order.status === 'pending_payment' && (
+                          <button
+                            type="button"
+                            onClick={() => onProceedToReceiptVerify(order)}
+                            className="text-xs font-medium text-primary hover:underline cursor-pointer"
+                          >
+                            Soát bill
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </div>
       </div>
-    </div>
-  );
-});
+    );
+  }
+);
 
-function FileImageIcon() {
-  return <Camera className="size-4 text-primary" aria-hidden="true" />;
-}
-
-function OrderStatusBadge({ status }: { status: OrderRow['status'] }) {
+function OrderStatusIndicator({ status }: { status: OrderRow['status'] }) {
   if (status === 'paid') {
     return (
-      <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 gap-1">
-        <CheckCircle2 className="size-3" aria-hidden="true" />
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#0F766E]">
+        <span className="size-1.5 rounded-full bg-[#0F766E]" aria-hidden="true" />
         Đã thu
-      </Badge>
+      </span>
     );
   }
   if (status === 'debt') {
     return (
-      <Badge className="bg-amber-100 text-amber-800 border-amber-200">Ghi sổ</Badge>
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#B45309]">
+        <span className="size-1.5 rounded-full bg-[#B45309]" aria-hidden="true" />
+        Ghi sổ
+      </span>
     );
   }
   if (status === 'cancelled') {
-    return <Badge variant="destructive">Đã hủy</Badge>;
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[#BE123C]">
+        <span className="size-1.5 rounded-full bg-[#BE123C]" aria-hidden="true" />
+        Đã hủy
+      </span>
+    );
   }
   return (
-    <Badge className="bg-secondary text-secondary-foreground border-primary/20">
+    <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+      <span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />
       Chờ thanh toán
-    </Badge>
+    </span>
+  );
+}
+
+function QrStandIllustration() {
+  return (
+    <svg
+      width="56"
+      height="56"
+      viewBox="0 0 56 56"
+      fill="none"
+      aria-hidden="true"
+      className="text-[#A8A29E]"
+    >
+      <rect x="11" y="6" width="34" height="38" rx="4" stroke="currentColor" strokeWidth="1.5" />
+      <rect x="17" y="13" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+      <rect x="31" y="13" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+      <rect x="17" y="27" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M31 27h3v3h-3zM36 32h3v3h-3zM31 33h3v2h-3z" fill="currentColor" />
+      <path d="M16 49h24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <path d="M23 44l-2 5M33 44l2 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function HandwrittenSlipIllustration() {
+  return (
+    <svg
+      width="44"
+      height="44"
+      viewBox="0 0 44 44"
+      fill="none"
+      aria-hidden="true"
+      className="text-[#A8A29E]"
+    >
+      <rect x="9" y="6" width="26" height="32" rx="3" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M15 14h14M15 20h10M15 26h12"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+      <path d="M27 31l4-4 2 2-4 4h-2v-2z" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
   );
 }
