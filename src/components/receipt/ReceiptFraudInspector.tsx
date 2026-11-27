@@ -374,10 +374,10 @@ export const ReceiptFraudInspector = forwardRef<
         : null;
 
   return (
-    <div onPaste={handlePaste} className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+    <div onPaste={handlePaste} className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch">
       {/* Left 5 Columns: Intake Dropzone & Transfer History Queue */}
-      <div className="xl:col-span-5 space-y-5">
-        <section aria-labelledby="receipt-upload-heading" className="glass-panel rounded-2xl p-5 space-y-4">
+      <div className="xl:col-span-5 flex flex-col gap-4">
+        <section aria-labelledby="receipt-upload-heading" className="surface-card rounded-xl p-4 sm:p-5 space-y-4">
           <div>
             <h2 id="receipt-upload-heading" className="text-[15px] font-semibold tracking-tight text-foreground">
               Kiểm tra biên lai chuyển khoản
@@ -395,7 +395,7 @@ export const ReceiptFraudInspector = forwardRef<
               id="target-order-select"
               value={targetOrder?.id ?? ''}
               onChange={(e) => onSelectOrderId(e.target.value)}
-              className="mt-1.5 h-10 w-full rounded-xl border border-white/90 bg-white/85 px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="mt-1.5 h-10 w-full rounded-lg border border-[#DFD1DB] bg-white px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
               {orders.map((o) => {
                 const expected = o.transfer_amount_vnd > 0 ? o.transfer_amount_vnd : o.total_vnd;
@@ -417,7 +417,7 @@ export const ReceiptFraudInspector = forwardRef<
             </select>
           </div>
 
-          {/* Elevated Drag & Drop / Ctrl+V Receipt Dropzone */}
+          {/* Drag & Drop / Ctrl+V Receipt Dropzone */}
           <div
             onDragOver={(e) => {
               e.preventDefault();
@@ -425,10 +425,10 @@ export const ReceiptFraudInspector = forwardRef<
             }}
             onDragLeave={() => setIsDragOver(false)}
             onDrop={handleDrop}
-            className={`relative overflow-hidden rounded-2xl border transition-colors p-4 ${
+            className={`relative overflow-hidden rounded-xl border border-dashed transition-colors p-4 ${
               isDragOver
-                ? 'border-primary bg-primary/[0.04]'
-                : 'border-white/90 bg-white/60'
+                ? 'border-primary bg-[#FDF2F8]/60'
+                : 'border-[#DFC7D7] bg-[#FBF8FA] hover:border-primary/50'
             }`}
           >
             <input
@@ -440,14 +440,14 @@ export const ReceiptFraudInspector = forwardRef<
             />
 
             {imagePreviewUrl ? (
-              <div className="relative flex justify-center rounded-xl bg-white p-2 border border-border/60">
+              <div className="relative flex justify-center rounded-lg bg-white p-2 border border-[#EAE0E7]">
                 <Image
                   src={imagePreviewUrl}
                   alt="Ảnh biên lai chuyển khoản"
                   width={360}
                   height={280}
                   unoptimized
-                  className="max-h-60 w-auto object-contain rounded-lg"
+                  className="max-h-56 w-auto object-contain rounded-md"
                 />
                 {isVerifying && (
                   <div
@@ -457,8 +457,8 @@ export const ReceiptFraudInspector = forwardRef<
                 )}
               </div>
             ) : (
-              <div className="py-5 text-center space-y-2.5">
-                <div className="mx-auto size-10 rounded-xl bg-[#18151F]/5 flex items-center justify-center text-foreground">
+              <div className="py-4 text-center space-y-2.5">
+                <div className="mx-auto size-10 rounded-lg bg-[#FDF2F8] border border-[#F3D0E2] flex items-center justify-center">
                   <ImagePlus className="size-5 text-primary" aria-hidden="true" />
                 </div>
                 <div className="space-y-1">
@@ -494,7 +494,7 @@ export const ReceiptFraudInspector = forwardRef<
                 type="button"
                 variant="outline"
                 onClick={() => fileInputRef.current?.click()}
-                className="min-h-[44px] rounded-xl bg-white/85 border-border cursor-pointer"
+                className="min-h-[42px] rounded-lg bg-white border-[#EAE0E7] hover:bg-[#FDF2F8] hover:border-[#EAB8D2] cursor-pointer"
               >
                 <ImagePlus className="size-4 text-primary" aria-hidden="true" />
                 <span>Đổi ảnh</span>
@@ -504,7 +504,7 @@ export const ReceiptFraudInspector = forwardRef<
               type="button"
               onClick={() => void runVerification()}
               disabled={isVerifying || (!imagePayload && !activeScenarioId)}
-              className="min-h-[44px] flex-1 rounded-xl bg-primary text-primary-foreground hover:bg-[#8B0054] font-semibold text-sm cursor-pointer shadow-[0_6px_20px_rgba(165,0,100,0.2)]"
+              className="min-h-[42px] flex-1 rounded-lg bg-primary text-primary-foreground hover:bg-[#8B0054] font-semibold text-sm cursor-pointer shadow-xs disabled:bg-[#F3EBF0] disabled:text-[#968491] disabled:border disabled:border-[#E6DAE2] disabled:opacity-100 disabled:shadow-none"
             >
               {isVerifying ? (
                 <>
@@ -522,17 +522,17 @@ export const ReceiptFraudInspector = forwardRef<
         </section>
 
         {/* Clickable Transfer Audit History */}
-        <section aria-labelledby="receipt-history-heading" className="glass-panel rounded-2xl p-5 space-y-3">
+        <section aria-labelledby="receipt-history-heading" className="surface-card rounded-xl p-4 sm:p-5 space-y-3 flex-1">
           <div className="flex items-center justify-between">
             <h3 id="receipt-history-heading" className="text-sm font-semibold text-foreground">
               Lịch sử kiểm duyệt gần đây
             </h3>
-            <span className="font-mono tabular-nums text-xs text-muted-foreground">
+            <span className="tabular-nums text-xs text-muted-foreground">
               {paymentReceipts.length} giao dịch
             </span>
           </div>
 
-          <div className="divide-y divide-border/75 max-h-64 overflow-y-auto pr-1">
+          <div className="divide-y divide-[#F0E7ED] max-h-64 overflow-y-auto pr-1">
             {paymentReceipts.slice(0, 8).map((r) => {
               const isApproved = r.verdict === 'approved';
               const isRejected = r.verdict === 'rejected';
@@ -552,7 +552,7 @@ export const ReceiptFraudInspector = forwardRef<
                   ? 'bg-[#BE123C]'
                   : isWarning
                     ? 'bg-[#B45309]'
-                    : 'bg-[#18151F]/35';
+                    : 'bg-[#968491]';
               const statusText = isApproved
                 ? 'Đã nhận'
                 : isRejected
@@ -566,8 +566,10 @@ export const ReceiptFraudInspector = forwardRef<
                   key={r.id}
                   type="button"
                   onClick={() => setInspectedHistoryId(r.id)}
-                  className={`w-full py-2.5 px-2.5 -mx-2.5 rounded-xl flex items-center justify-between gap-2 text-xs text-left transition-colors cursor-pointer ${
-                    isSelected ? 'bg-white/95 shadow-2xs' : 'hover:bg-white/55'
+                  className={`w-full py-2.5 px-2.5 rounded-lg flex items-center justify-between gap-2 text-xs text-left transition-colors cursor-pointer ${
+                    isSelected
+                      ? 'bg-[#FDF2F8] border border-[#F3D0E2]'
+                      : 'hover:bg-[#FBF8FA] border border-transparent'
                   }`}
                 >
                   <div className="min-w-0">
@@ -575,7 +577,7 @@ export const ReceiptFraudInspector = forwardRef<
                     <span className="text-muted-foreground"> • {cleanBankDisplay(r.bank_name)}</span>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
-                    <span className="font-mono tabular-nums font-semibold text-foreground">
+                    <span className="font-sans tabular-nums font-semibold text-foreground">
                       {formatVND(r.extracted_amount_vnd)}
                     </span>
                     <span className={`inline-flex items-center gap-1.5 font-medium ${statusColor}`}>
@@ -590,93 +592,91 @@ export const ReceiptFraudInspector = forwardRef<
         </section>
       </div>
 
-      {/* Right 7 Columns: Bank-Grade Dark-Glass Verification Dossier (Never Empty) */}
-      <div className="xl:col-span-7 space-y-5">
+      {/* Right 7 Columns: Light Verdict Verification Dossier (Never Empty) */}
+      <div className="xl:col-span-7 flex flex-col">
         {isVerifying && (
-          <section className="glass-panel rounded-2xl p-6 space-y-4 animate-pulse">
-            <div className="h-24 rounded-xl bg-[#18151F]/10" />
+          <section className="surface-card rounded-xl p-6 space-y-4 animate-pulse flex-1">
+            <div className="h-24 rounded-lg bg-[#F5EEF3]" />
             <div className="space-y-3">
-              <div className="h-14 rounded-xl bg-black/5" />
-              <div className="h-14 rounded-xl bg-black/5" />
-              <div className="h-14 rounded-xl bg-black/5" />
-              <div className="h-14 rounded-xl bg-black/5" />
+              <div className="h-14 rounded-lg bg-[#F9F4F7]" />
+              <div className="h-14 rounded-lg bg-[#F9F4F7]" />
+              <div className="h-14 rounded-lg bg-[#F9F4F7]" />
+              <div className="h-14 rounded-lg bg-[#F9F4F7]" />
             </div>
           </section>
         )}
 
         {!isVerifying && displayedDossier && (
-          <section aria-labelledby="dossier-heading" className="glass-elevated rounded-2xl overflow-hidden">
-            {/* Dark Smoked-Glass Security Verdict Banner */}
-            <div className="glass-dark relative p-5 sm:p-6 space-y-5 rounded-t-2xl border-x-0 border-t-0">
-              <div
-                className="pointer-events-none absolute -top-20 -right-12 h-48 w-64 rounded-full blur-[70px]"
-                style={{
-                  background:
-                    displayedDossier.verdict === 'valid'
-                      ? 'radial-gradient(circle, rgba(16, 185, 129, 0.34) 0%, transparent 72%)'
-                      : displayedDossier.verdict === 'warning'
-                        ? 'radial-gradient(circle, rgba(245, 158, 11, 0.32) 0%, transparent 72%)'
-                        : 'radial-gradient(circle, rgba(244, 63, 94, 0.36) 0%, transparent 72%)',
-                }}
-                aria-hidden="true"
-              />
-
-              <div className="relative flex flex-wrap items-start justify-between gap-3">
+          <section
+            aria-labelledby="dossier-heading"
+            className="surface-elevated rounded-xl overflow-hidden flex flex-col justify-between flex-1"
+          >
+            {/* Dynamic Verdict-Tinted Light Security Header */}
+            <div
+              className={`p-5 space-y-4 border-b ${
+                displayedDossier.verdict === 'valid'
+                  ? 'bg-gradient-to-br from-[#F2FBF7] via-[#FFFFFF] to-[#F4FBF8] border-[#D1F0E4]'
+                  : displayedDossier.verdict === 'warning'
+                    ? 'bg-gradient-to-br from-[#FFFBF2] via-[#FFFFFF] to-[#FEF8E8] border-[#F3DFB4]'
+                    : 'bg-gradient-to-br from-[#FFF5F7] via-[#FFFFFF] to-[#FEECEF] border-[#F7C6D0]'
+              }`}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 id="dossier-heading" className="text-base font-semibold tracking-tight text-white">
+                  <h2 id="dossier-heading" className="text-base font-semibold tracking-tight text-foreground">
                     Hồ sơ xác thực giao dịch
                   </h2>
-                  <p className="text-xs text-white/65 mt-0.5">
+                  <p className="text-xs text-muted-foreground mt-0.5">
                     Hệ thống kiểm tra tự động, chủ quán giữ quyền xác nhận cuối cùng.
                   </p>
                 </div>
                 <VerdictPill verdict={displayedDossier.verdict} />
               </div>
 
-              <div className="relative grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-xl border border-white/12 bg-white/[0.06] p-3.5 text-xs">
-                <div>
-                  <p className="text-white/60">Mã tham chiếu</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-lg border border-[#EAE0E7] bg-white/95 p-3.5 text-xs">
+                <div className="min-w-0">
+                  <p className="text-[11px] text-muted-foreground whitespace-nowrap">Mã tham chiếu</p>
                   <button
                     type="button"
                     onClick={() => void handleCopyRef(displayedDossier.extraction.transactionRef)}
-                    className="mt-1 inline-flex items-center gap-1 font-mono font-bold text-white hover:text-white/80 cursor-pointer"
+                    className="mt-1 inline-flex items-center gap-1 font-mono font-bold text-foreground hover:text-primary cursor-pointer max-w-full"
                   >
                     <span className="truncate">{displayedDossier.extraction.transactionRef}</span>
-                    {copiedRef ? <Check className="size-3 text-emerald-300" /> : <Copy className="size-3 text-white/60" />}
+                    {copiedRef ? <Check className="size-3 text-[#0F766E] shrink-0" /> : <Copy className="size-3 text-muted-foreground shrink-0" />}
                   </button>
                 </div>
 
-                <div>
-                  <p className="text-white/60">Số tiền trên ảnh / Cần thu</p>
-                  <p className="mt-1 font-mono tabular-nums font-bold text-white">
+                <div className="min-w-0">
+                  <p className="text-[11px] text-muted-foreground whitespace-nowrap">Số tiền ảnh</p>
+                  <p className="mt-1 font-sans tabular-nums font-bold text-foreground">
                     {formatVND(displayedDossier.extraction.extractedAmountVnd)}
                   </p>
-                  <p className="font-mono tabular-nums text-[11px] text-white/60">
+                  <p className="font-sans tabular-nums text-[11px] text-muted-foreground">
                     Đơn: {formatVND(displayedDossier.receipt.expected_amount_vnd)}
                   </p>
                 </div>
 
-                <div>
-                  <p className="text-white/60">Ngân hàng</p>
-                  <p className="mt-1 font-medium text-white truncate">
+                <div className="min-w-0">
+                  <p className="text-[11px] text-muted-foreground whitespace-nowrap">Ngân hàng</p>
+                  <p className="mt-1 font-medium text-foreground truncate">
                     {cleanBankDisplay(displayedDossier.extraction.bankName)}
                   </p>
                 </div>
 
-                <div>
-                  <p className="text-white/60">Nội dung CK</p>
-                  <p className="mt-1 font-mono text-white truncate">
+                <div className="min-w-0">
+                  <p className="text-[11px] text-muted-foreground whitespace-nowrap">Nội dung CK</p>
+                  <p className="mt-1 font-mono text-foreground truncate">
                     {displayedDossier.extraction.transferNote || 'Không có'}
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* 4 Verification Checks */}
-            <div className="p-5 sm:p-6 space-y-5">
-              <div className="divide-y divide-border/80 rounded-xl border border-white/90 bg-white/75 px-4">
+            {/* 4 Verification Checks + Human-in-the-Loop Footer */}
+            <div className="p-5 space-y-4 flex-1 flex flex-col justify-between">
+              <div className="divide-y divide-[#F0E7ED] rounded-lg border border-[#EAE0E7] bg-white px-4">
                 {displayedDossier.checks.map((chk) => (
-                  <div key={chk.key} className="flex items-start gap-3 py-3.5">
+                  <div key={chk.key} className="flex items-start gap-3 py-3">
                     {chk.severity === 'pass' ? (
                       <CheckCircle2 className="size-4 text-[#0F766E] shrink-0 mt-0.5" aria-hidden="true" />
                     ) : chk.severity === 'warning' ? (
@@ -697,7 +697,7 @@ export const ReceiptFraudInspector = forwardRef<
               </div>
 
               {/* Human-in-the-Loop Action Footer */}
-              <div className="rounded-xl border border-white/90 bg-white/75 p-4 space-y-3">
+              <div className="rounded-lg border border-[#EAE0E7] bg-[#FBF8FA] p-4 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                   <span className="font-semibold text-foreground">Quyết định của chủ quán</span>
                   <span className="font-medium text-muted-foreground">
@@ -725,7 +725,7 @@ export const ReceiptFraudInspector = forwardRef<
                     type="button"
                     disabled={isApproving}
                     onClick={() => void handleHumanDecision('approve')}
-                    className="min-h-[44px] rounded-xl bg-[#0F766E] hover:bg-[#0D625B] text-white font-semibold cursor-pointer"
+                    className="min-h-[42px] rounded-lg bg-[#0D7A5F] hover:bg-[#0A644E] text-white font-semibold cursor-pointer"
                   >
                     <ShieldCheck className="size-4" aria-hidden="true" />
                     <span>Xác nhận đã nhận tiền</span>
@@ -735,7 +735,7 @@ export const ReceiptFraudInspector = forwardRef<
                     variant="outline"
                     disabled={isApproving}
                     onClick={() => void handleHumanDecision('reject')}
-                    className="min-h-[44px] rounded-xl border-[#BE123C]/30 bg-white text-[#BE123C] hover:bg-[#FFF1F2] font-semibold cursor-pointer"
+                    className="min-h-[42px] rounded-lg border-[#EAB8C4] bg-white text-[#BE123C] hover:bg-[#FFF1F2] font-semibold cursor-pointer"
                   >
                     <ShieldX className="size-4" aria-hidden="true" />
                     <span>Từ chối giao dịch</span>
@@ -757,23 +757,23 @@ function cleanMerchantCopySafe(text: string): string {
 function VerdictPill({ verdict }: { verdict: VerifyResponsePayload['verdict'] }) {
   if (verdict === 'valid') {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/35 bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-200">
-        <span className="size-1.5 rounded-full bg-emerald-300" aria-hidden="true" />
+      <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#A7F3D0] bg-[#ECFDF5] px-2.5 py-1 text-xs font-semibold text-[#065F46]">
+        <span className="size-1.5 rounded-full bg-[#0F766E]" aria-hidden="true" />
         Hợp lệ • Khớp 4/4 tiêu chí
       </span>
     );
   }
   if (verdict === 'warning') {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/35 bg-amber-500/20 px-3 py-1 text-xs font-semibold text-amber-200">
-        <span className="size-1.5 rounded-full bg-amber-300" aria-hidden="true" />
+      <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#FDE68A] bg-[#FFFBEB] px-2.5 py-1 text-xs font-semibold text-[#92400E]">
+        <span className="size-1.5 rounded-full bg-[#B45309]" aria-hidden="true" />
         Cần xem lại
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-400/35 bg-rose-500/20 px-3 py-1 text-xs font-semibold text-rose-200">
-      <span className="size-1.5 rounded-full bg-rose-300" aria-hidden="true" />
+    <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#FECDD3] bg-[#FFF1F2] px-2.5 py-1 text-xs font-semibold text-[#9F1239]">
+      <span className="size-1.5 rounded-full bg-[#BE123C]" aria-hidden="true" />
       Cảnh báo giả mạo / Trùng mã GD
     </span>
   );

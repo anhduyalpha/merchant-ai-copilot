@@ -551,14 +551,14 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
     const terminalIsCashOnly = Boolean(draft && !savedOrderResult && draft.paymentMethod === 'cash');
 
     return (
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
-        {/* Left 7 Columns: Smart Quick Order + Live Interactive Menu */}
-        <div className="xl:col-span-7 space-y-5">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
+        {/* Left 7 Columns: Compact Smart Quick Order + Live Interactive Menu */}
+        <div className="xl:col-span-7 space-y-4">
           {/* AI Quick-Order Command Bar */}
           <section
             aria-labelledby="quick-order-heading"
             onPaste={handlePasteEvent}
-            className="glass-panel rounded-2xl p-5 space-y-4"
+            className="surface-card rounded-xl p-4 space-y-3"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
@@ -575,7 +575,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
             <div
               role="tablist"
               aria-label="Cách nhập đơn"
-              className="grid grid-cols-3 gap-1 rounded-xl bg-black/[0.045] p-1"
+              className="grid grid-cols-3 gap-1 rounded-lg bg-[#F5EEF3] p-1"
             >
               {(
                 [
@@ -593,14 +593,14 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                     role="tab"
                     aria-selected={active}
                     onClick={() => setInputMode(tab.id)}
-                    className={`min-h-[38px] rounded-lg px-2 py-1.5 flex items-center justify-center gap-1.5 text-xs font-medium transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                    className={`min-h-[36px] rounded-md px-2 py-1.5 flex items-center justify-center gap-1.5 text-xs transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                       active
-                        ? 'bg-white text-foreground shadow-xs'
-                        : 'text-muted-foreground hover:text-foreground'
+                        ? 'bg-white text-[#A50064] font-semibold shadow-2xs'
+                        : 'text-muted-foreground font-medium hover:text-foreground'
                     }`}
                   >
                     <Icon
-                      className={`size-3.5 shrink-0 ${active ? 'text-primary' : 'text-muted-foreground'}`}
+                      className={`size-3.5 shrink-0 ${active ? 'text-[#A50064]' : 'text-muted-foreground'}`}
                       aria-hidden="true"
                     />
                     <span className="sm:hidden whitespace-nowrap">{tab.shortLabel}</span>
@@ -614,10 +614,10 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
               <Textarea
                 value={textInput}
                 onChange={(e) => setTextInput(e.target.value)}
-                rows={3}
+                rows={2}
                 aria-label="Nội dung tin nhắn đặt món"
                 placeholder="Ví dụ: Bàn 4 thêm 2 cf sữa ít đá, 1 trà đào, giảm 10k khách quen..."
-                className="bg-white/85 border-white/90 focus-visible:ring-primary text-sm leading-relaxed rounded-xl resize-none shadow-2xs"
+                className="bg-white border-[#DFD1DB] focus-visible:ring-primary text-sm leading-relaxed rounded-lg resize-none"
               />
             )}
 
@@ -628,7 +628,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                     type="button"
                     variant={isListening ? 'destructive' : 'outline'}
                     onClick={toggleVoiceRecognition}
-                    className="min-h-[40px] rounded-xl bg-white/85 border-border/80 cursor-pointer"
+                    className="min-h-[38px] rounded-lg bg-white border-[#DFD1DB] cursor-pointer"
                   >
                     {isListening ? (
                       <>
@@ -646,10 +646,10 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                 <Textarea
                   value={textInput}
                   onChange={(e) => setTextInput(e.target.value)}
-                  rows={3}
+                  rows={2}
                   aria-label="Nội dung đọc món"
                   placeholder="Nội dung giọng nói sẽ tự điền tại đây, hoặc gõ nhanh ghi chú gọi món..."
-                  className="bg-white/85 border-white/90 focus-visible:ring-primary text-sm leading-relaxed rounded-xl resize-none"
+                  className="bg-white border-[#DFD1DB] focus-visible:ring-primary text-sm leading-relaxed rounded-lg resize-none"
                 />
               </div>
             )}
@@ -662,10 +662,10 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                 }}
                 onDragLeave={() => setIsDragOver(false)}
                 onDrop={handleDrop}
-                className={`rounded-xl border transition-colors p-4 ${
+                className={`rounded-lg border border-dashed transition-colors p-3.5 ${
                   isDragOver
-                    ? 'border-primary bg-primary/[0.04]'
-                    : 'border-white/90 bg-white/60'
+                    ? 'border-primary bg-[#FDF2F8]/60'
+                    : 'border-[#DFC7D7] bg-[#FBF8FA]'
                 }`}
               >
                 <input
@@ -677,15 +677,15 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                 />
 
                 {imagePreviewUrl ? (
-                  <div className="space-y-2.5">
-                    <div className="relative rounded-xl border border-border/70 bg-white p-2 flex justify-center">
+                  <div className="space-y-2">
+                    <div className="relative rounded-lg border border-[#EAE0E7] bg-white p-2 flex justify-center">
                       <Image
                         src={imagePreviewUrl}
                         alt="Ảnh giấy ghi tay order"
                         width={460}
                         height={240}
                         unoptimized
-                        className="max-h-48 w-auto object-contain rounded-lg"
+                        className="max-h-44 w-auto object-contain rounded-md"
                       />
                       <button
                         type="button"
@@ -694,7 +694,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                           setImagePayload(null);
                         }}
                         aria-label="Xóa ảnh giấy ghi tay"
-                        className="absolute top-2 right-2 size-7 rounded-lg bg-[#18151F]/75 text-white inline-flex items-center justify-center hover:bg-[#18151F] cursor-pointer"
+                        className="absolute top-2 right-2 size-7 rounded-md bg-white/95 border border-[#EAE0E7] text-foreground inline-flex items-center justify-center hover:bg-[#FDF2F8] hover:text-[#A50064] shadow-xs cursor-pointer"
                       >
                         <X className="size-3.5" />
                       </button>
@@ -702,7 +702,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                   </div>
                 ) : (
                   <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
-                    <div className="space-y-1">
+                    <div className="space-y-0.5">
                       <p className="text-xs font-medium text-foreground">
                         Kéo thả ảnh, dán trực tiếp bằng Ctrl+V hoặc chọn từ máy
                       </p>
@@ -714,7 +714,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                       type="button"
                       variant="outline"
                       onClick={() => fileInputRef.current?.click()}
-                      className="min-h-[40px] rounded-xl bg-white border-border shrink-0 cursor-pointer"
+                      className="min-h-[38px] rounded-lg bg-white border-[#EAE0E7] hover:bg-[#FDF2F8] hover:border-[#EAB8D2] shrink-0 cursor-pointer"
                     >
                       <ImagePlus className="size-4 text-primary" aria-hidden="true" />
                       <span>Chọn ảnh</span>
@@ -724,28 +724,33 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
               </div>
             )}
 
-            <Button
-              type="button"
-              onClick={() => void runParseOrder()}
-              disabled={isParsing}
-              className="min-h-[44px] w-full rounded-xl bg-primary text-primary-foreground hover:bg-[#8B0054] font-semibold text-sm transition-colors cursor-pointer shadow-[0_6px_20px_rgba(165,0,100,0.22)]"
-            >
-              {isParsing ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                  <span>Đang tách món và tính tiền...</span>
-                </>
-              ) : (
-                <>
-                  <span>Lên đơn & Tính tiền</span>
-                  <ArrowRight className="size-4" aria-hidden="true" />
-                </>
-              )}
-            </Button>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-0.5">
+              <p className="text-[11px] text-muted-foreground">
+                Hỗ trợ viết tắt: cf sữa, bx, giảm 10k, ghi sổ...
+              </p>
+              <Button
+                type="button"
+                onClick={() => void runParseOrder()}
+                disabled={isParsing}
+                className="min-h-[40px] w-full sm:w-auto px-5 rounded-lg bg-primary text-primary-foreground hover:bg-[#8B0054] font-semibold text-sm transition-colors cursor-pointer shadow-xs shrink-0"
+              >
+                {isParsing ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                    <span>Đang tách món và tính tiền...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Lên đơn & Tính tiền</span>
+                    <ArrowRight className="size-4" aria-hidden="true" />
+                  </>
+                )}
+              </Button>
+            </div>
           </section>
 
           {/* Live Interactive Menu Grid (1-tap ordering into the exact same live ticket) */}
-          <section aria-labelledby="menu-grid-heading" className="glass-panel rounded-2xl p-5 space-y-4">
+          <section aria-labelledby="menu-grid-heading" className="surface-card rounded-xl p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 id="menu-grid-heading" className="text-[15px] font-semibold tracking-tight text-foreground">
@@ -762,7 +767,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                   value={menuQuery}
                   onChange={(e) => setMenuQuery(e.target.value)}
                   placeholder="Tìm món (vd: bx, cf sữa)"
-                  className="h-9 pl-8 rounded-xl bg-white/80 border-white/90 text-xs"
+                  className="h-9 pl-8 rounded-lg bg-white border-[#DFD1DB] text-xs"
                 />
               </div>
             </div>
@@ -775,10 +780,10 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                     key={cat.id}
                     type="button"
                     onClick={() => setMenuCategory(cat.id)}
-                    className={`min-h-[34px] rounded-lg px-3 py-1 text-xs font-medium whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
+                    className={`min-h-[32px] rounded-lg px-3 py-1 text-xs whitespace-nowrap shrink-0 transition-colors cursor-pointer ${
                       active
-                        ? 'bg-[#18151F] text-white'
-                        : 'bg-white/70 text-muted-foreground hover:bg-white hover:text-foreground border border-white/80'
+                        ? 'bg-[#FDF2F8] text-[#A50064] border border-[#EAB8D2] font-semibold'
+                        : 'bg-white text-muted-foreground border border-[#EAE0E7] font-medium hover:bg-[#FBF8FA] hover:text-foreground'
                     }`}
                   >
                     {cat.label}
@@ -791,12 +796,12 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
               {filteredMenu.map((item) => (
                 <div
                   key={item.id}
-                  className="rounded-xl border border-white/90 bg-white/72 hover:bg-white/95 px-3.5 py-3 flex items-center justify-between gap-3 transition-all shadow-2xs"
+                  className="rounded-lg border border-[#EAE0E7] bg-white hover:border-[#EAB8D2] hover:bg-[#FFF9FC] px-3 py-2.5 flex items-center justify-between gap-3 transition-colors"
                 >
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-foreground truncate">{item.name}</p>
                     <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                      <span className="font-mono tabular-nums font-semibold text-primary">
+                      <span className="font-sans tabular-nums font-semibold text-primary">
                         {formatVND(item.price_vnd)}
                       </span>
                       <span>•</span>
@@ -807,7 +812,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                   <button
                     type="button"
                     onClick={() => handleQuickAddMenuItem(item)}
-                    className="min-h-[38px] rounded-lg border border-border/80 bg-white px-2.5 py-1.5 inline-flex items-center gap-1 text-xs font-semibold text-foreground hover:border-primary/40 hover:text-primary transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    className="min-h-[34px] rounded-lg border border-[#EAE0E7] bg-[#FBF8FA] px-2.5 py-1 inline-flex items-center gap-1 text-xs font-semibold text-foreground hover:bg-[#FDF2F8] hover:border-[#EAB8D2] hover:text-[#A50064] transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     <Plus className="size-3.5" aria-hidden="true" />
                     <span>Thêm</span>
@@ -818,21 +823,21 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
           </section>
         </div>
 
-        {/* Right 5 Columns: Sticky Live Ticket + Dark Smoked-Glass VietQR Terminal + Recent Orders */}
-        <div className="xl:col-span-5 space-y-5 xl:sticky xl:top-5">
+        {/* Right 5 Columns: Sticky Live Ticket + Light Blush VietQR Terminal + Recent Orders */}
+        <div className="xl:col-span-5 space-y-4 xl:sticky xl:top-5">
           {/* Skeleton during parsing */}
           {isParsing && (
-            <section className="glass-panel rounded-2xl p-5 space-y-3 animate-pulse">
-              <div className="h-4 w-32 rounded bg-black/10" />
-              <div className="h-10 rounded-xl bg-black/5" />
-              <div className="h-10 rounded-xl bg-black/5" />
-              <div className="h-11 rounded-xl bg-primary/20" />
+            <section className="surface-card rounded-xl p-4 space-y-3 animate-pulse">
+              <div className="h-4 w-32 rounded bg-[#F0E5EC]" />
+              <div className="h-10 rounded-lg bg-[#F5EEF3]" />
+              <div className="h-10 rounded-lg bg-[#F5EEF3]" />
+              <div className="h-10 rounded-lg bg-primary/15" />
             </section>
           )}
 
           {/* Active Draft Ticket (when creating/editing an order) */}
           {!isParsing && draft && (
-            <section aria-labelledby="ticket-heading" className="glass-elevated rounded-2xl p-5 space-y-4">
+            <section aria-labelledby="ticket-heading" className="surface-elevated rounded-xl p-4 space-y-3.5">
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <h3 id="ticket-heading" className="text-[15px] font-semibold tracking-tight text-foreground">
@@ -851,7 +856,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                     setSavedOrderResult(null);
                   }}
                   aria-label="Hủy phiếu đang lập"
-                  className="size-8 rounded-lg border border-border bg-white/80 text-muted-foreground hover:text-foreground inline-flex items-center justify-center cursor-pointer"
+                  className="size-8 rounded-lg border border-[#EAE0E7] bg-white text-muted-foreground hover:text-foreground hover:bg-[#FBF8FA] inline-flex items-center justify-center cursor-pointer"
                 >
                   <X className="size-3.5" />
                 </button>
@@ -869,7 +874,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                       setSavedOrderResult(null);
                       setDraft({ ...draft, tableOrChannel: e.target.value });
                     }}
-                    className="mt-1 h-9 bg-white/90 rounded-lg text-xs"
+                    className="mt-1 h-9 bg-white border-[#DFD1DB] rounded-lg text-xs"
                   />
                 </div>
                 <div>
@@ -884,12 +889,12 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                       setSavedOrderResult(null);
                       setDraft({ ...draft, customerName: e.target.value || null });
                     }}
-                    className="mt-1 h-9 bg-white/90 rounded-lg text-xs"
+                    className="mt-1 h-9 bg-white border-[#DFD1DB] rounded-lg text-xs"
                   />
                 </div>
               </div>
 
-              <div className="divide-y divide-border/80 rounded-xl border border-white/90 bg-white/75 px-3">
+              <div className="divide-y divide-[#F0E7ED] rounded-lg border border-[#EAE0E7] bg-[#FBF8FA]/60 px-3">
                 {draft.items.map((item, idx) => (
                   <div
                     key={`${item.matchedItemName}-${idx}`}
@@ -900,11 +905,11 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                         {item.matchedItemName}
                       </p>
                       <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-                        <span className="font-mono tabular-nums">{formatVND(item.unitPriceVnd)}</span>
+                        <span className="font-sans tabular-nums">{formatVND(item.unitPriceVnd)}</span>
                         {item.modifiers.map((mod, mIdx) => (
                           <span
                             key={mIdx}
-                            className="rounded bg-black/[0.045] px-1.5 py-0.5 text-[10px] text-foreground"
+                            className="rounded bg-[#F5EEF3] px-1.5 py-0.5 text-[10px] text-foreground"
                           >
                             {mod}
                           </span>
@@ -917,22 +922,22 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                         type="button"
                         onClick={() => updateItemQuantity(idx, -1)}
                         aria-label={`Giảm ${item.matchedItemName}`}
-                        className="size-7 rounded-md border border-border bg-white inline-flex items-center justify-center hover:bg-black/5 cursor-pointer"
+                        className="size-7 rounded-md border border-[#EAE0E7] bg-white inline-flex items-center justify-center hover:bg-[#FDF2F8] hover:text-[#A50064] cursor-pointer"
                       >
                         {item.quantity === 1 ? <Trash2 className="size-3" /> : <Minus className="size-3" />}
                       </button>
-                      <span className="w-5 text-center font-mono tabular-nums text-xs font-semibold">
+                      <span className="w-5 text-center font-sans tabular-nums text-xs font-semibold">
                         {item.quantity}
                       </span>
                       <button
                         type="button"
                         onClick={() => updateItemQuantity(idx, 1)}
                         aria-label={`Tăng ${item.matchedItemName}`}
-                        className="size-7 rounded-md border border-border bg-white inline-flex items-center justify-center hover:bg-black/5 cursor-pointer"
+                        className="size-7 rounded-md border border-[#EAE0E7] bg-white inline-flex items-center justify-center hover:bg-[#FDF2F8] hover:text-[#A50064] cursor-pointer"
                       >
                         <Plus className="size-3" />
                       </button>
-                      <span className="w-20 text-right font-mono tabular-nums text-xs font-bold text-foreground">
+                      <span className="w-20 text-right font-sans tabular-nums text-xs font-bold text-foreground">
                         {formatVND(item.lineTotalVnd)}
                       </span>
                     </div>
@@ -940,7 +945,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                 ))}
               </div>
 
-              <div className="grid grid-cols-4 gap-1 rounded-xl bg-black/[0.045] p-1">
+              <div className="grid grid-cols-4 gap-1 rounded-lg bg-[#F5EEF3] p-1">
                 {(
                   [
                     { id: 'vietqr', label: 'VietQR' },
@@ -953,10 +958,10 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                     key={pm.id}
                     type="button"
                     onClick={() => updatePaymentMethod(pm.id)}
-                    className={`min-h-[34px] rounded-lg px-1.5 text-xs font-medium transition-colors cursor-pointer ${
+                    className={`min-h-[32px] rounded-md px-1.5 text-xs transition-colors cursor-pointer ${
                       draft.paymentMethod === pm.id
-                        ? 'bg-white text-foreground shadow-xs'
-                        : 'text-muted-foreground hover:text-foreground'
+                        ? 'bg-white text-[#A50064] font-semibold shadow-2xs'
+                        : 'text-muted-foreground font-medium hover:text-foreground'
                     }`}
                   >
                     {pm.label}
@@ -984,7 +989,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                         })
                       );
                     }}
-                    className="mt-1 h-9 bg-white/90 font-mono tabular-nums text-xs"
+                    className="mt-1 h-9 bg-white border-[#DFD1DB] font-sans tabular-nums text-xs rounded-lg"
                   />
                 </div>
                 {draft.paymentMethod === 'split' && (
@@ -1007,33 +1012,33 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                           })
                         );
                       }}
-                      className="mt-1 h-9 bg-white/90 font-mono tabular-nums text-xs"
+                      className="mt-1 h-9 bg-white border-[#DFD1DB] font-sans tabular-nums text-xs rounded-lg"
                     />
                   </div>
                 )}
               </div>
 
-              <div className="space-y-1 border-t border-border/80 pt-3 text-xs">
+              <div className="space-y-1 border-t border-[#EAE0E7] pt-3 text-xs">
                 <div className="flex justify-between text-muted-foreground">
                   <span>Tạm tính</span>
-                  <span className="font-mono tabular-nums">{formatVND(draft.subtotalVnd)}</span>
+                  <span className="font-sans tabular-nums">{formatVND(draft.subtotalVnd)}</span>
                 </div>
                 {draft.discountVnd > 0 && (
                   <div className="flex justify-between text-[#0F766E]">
                     <span>Giảm giá</span>
-                    <span className="font-mono tabular-nums">-{formatVND(draft.discountVnd)}</span>
+                    <span className="font-sans tabular-nums">-{formatVND(draft.discountVnd)}</span>
                   </div>
                 )}
                 <div className="flex items-baseline justify-between pt-1 text-sm font-bold text-foreground">
                   <span>Tổng cần thu</span>
-                  <span className="font-mono tabular-nums text-lg text-primary">
+                  <span className="font-sans tabular-nums text-lg text-primary">
                     {formatVND(draft.totalVnd)}
                   </span>
                 </div>
                 {draft.paymentMethod === 'split' && (
                   <div className="flex justify-between text-[11px] text-muted-foreground pt-1">
-                    <span>Tiền mặt: <strong className="font-mono tabular-nums text-foreground">{formatVND(draft.cashAmountVnd)}</strong></span>
-                    <span>VietQR: <strong className="font-mono tabular-nums text-primary">{formatVND(draft.transferAmountVnd)}</strong></span>
+                    <span>Tiền mặt: <strong className="font-sans tabular-nums text-foreground">{formatVND(draft.cashAmountVnd)}</strong></span>
+                    <span>VietQR: <strong className="font-sans tabular-nums text-primary">{formatVND(draft.transferAmountVnd)}</strong></span>
                   </div>
                 )}
               </div>
@@ -1042,7 +1047,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                 type="button"
                 onClick={handleSaveOrder}
                 disabled={isSaving}
-                className="min-h-[44px] w-full rounded-xl bg-primary text-primary-foreground hover:bg-[#8B0054] font-semibold text-sm cursor-pointer"
+                className="min-h-[42px] w-full rounded-lg bg-primary text-primary-foreground hover:bg-[#8B0054] font-semibold text-sm cursor-pointer shadow-xs"
               >
                 {isSaving ? (
                   <>
@@ -1059,115 +1064,119 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
             </section>
           )}
 
-          {/* Dark Smoked-Glass Countertop VietQR Terminal (Always meaningful, zero dead box!) */}
+          {/* Light Harmonious MoMo Blush Countertop VietQR Terminal */}
           <section
             aria-labelledby="qr-stand-heading"
-            className="glass-dark relative overflow-hidden rounded-2xl p-5 space-y-4"
+            className="surface-blush relative overflow-hidden rounded-xl"
           >
-            {/* Subtle top luminous glow */}
             <div
-              className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 h-48 w-72 rounded-full blur-[70px]"
-              style={{ background: 'radial-gradient(circle, rgba(216, 45, 139, 0.34) 0%, transparent 72%)' }}
+              className="h-1 w-full bg-gradient-to-r from-[#A50064] via-[#D82D8B] to-[#F472B6]"
               aria-hidden="true"
             />
 
-            <div className="relative flex items-center justify-between gap-2">
-              <div>
-                <h3 id="qr-stand-heading" className="text-[15px] font-semibold tracking-tight text-white">
-                  Mã VietQR quầy
-                </h3>
-                <p className="text-xs text-white/65 mt-0.5">
-                  {MERCHANT_BANK_ID} • {MERCHANT_ACCOUNT_NO} • {MERCHANT_ACCOUNT_NAME}
-                </p>
-              </div>
-              {activeTerminalOrder && (
-                <button
-                  type="button"
-                  onClick={() => void handleCopyCode(activeTerminalOrder.order_code)}
-                  className="min-h-[32px] rounded-lg border border-white/15 bg-white/10 px-2.5 py-1 inline-flex items-center gap-1.5 font-mono text-xs font-semibold text-white hover:bg-white/15 transition-colors cursor-pointer"
-                >
-                  <span>{activeTerminalOrder.order_code}</span>
-                  {copiedCode ? <Check className="size-3 text-emerald-300" /> : <Copy className="size-3 text-white/70" />}
-                </button>
-              )}
-            </div>
-
-            {terminalIsCashOnly ? (
-              <div className="relative rounded-xl border border-white/15 bg-white/10 px-5 py-8 text-center space-y-2">
-                <div className="mx-auto size-11 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center">
-                  <Banknote className="size-5" aria-hidden="true" />
+            <div className="p-4 space-y-3.5">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h3 id="qr-stand-heading" className="text-[15px] font-semibold tracking-tight text-foreground">
+                    Mã VietQR quầy
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {MERCHANT_BANK_ID} • {MERCHANT_ACCOUNT_NO} • {MERCHANT_ACCOUNT_NAME}
+                  </p>
                 </div>
-                <p className="text-sm font-semibold text-white">Thu tiền mặt tại quầy</p>
-                <p className="font-mono tabular-nums text-2xl font-bold text-white">
-                  {formatVND(draft?.totalVnd ?? 0)}
-                </p>
-                <p className="text-xs text-white/65">
-                  Đơn tiền mặt không cần quét mã chuyển khoản.
-                </p>
+                {activeTerminalOrder && (
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyCode(activeTerminalOrder.order_code)}
+                    className="min-h-[30px] rounded-lg border border-[#EAB8D2] bg-white px-2.5 py-1 inline-flex items-center gap-1.5 font-mono text-xs font-semibold text-[#A50064] hover:bg-[#FDF2F8] transition-colors cursor-pointer"
+                  >
+                    <span>{activeTerminalOrder.order_code}</span>
+                    {copiedCode ? <Check className="size-3 text-[#0F766E]" /> : <Copy className="size-3 text-[#A50064]/70" />}
+                  </button>
+                )}
               </div>
-            ) : activeTerminalQrUrl ? (
-              <div className="relative flex flex-col items-center space-y-3">
-                <div className="rounded-2xl bg-white p-3 shadow-[0_12px_36px_rgba(0,0,0,0.35)]">
-                  <Image
-                    src={activeTerminalQrUrl}
-                    alt="Mã VietQR thanh toán"
-                    width={216}
-                    height={252}
-                    unoptimized
-                    className="w-52 h-auto min-h-[220px] object-contain"
-                  />
-                </div>
 
-                <div className="w-full flex items-center justify-between gap-2 rounded-xl border border-white/12 bg-white/[0.07] px-3.5 py-2.5">
-                  <div>
-                    <p className="text-[11px] text-white/65">
-                      {savedOrderResult?.order
-                        ? `Đơn ${savedOrderResult.order.order_code} • Chờ quét`
-                        : draft
-                          ? 'Số tiền dự kiến'
-                          : activeTerminalOrder
-                            ? `${cleanCustomerDisplay(activeTerminalOrder.customer_name) || cleanCustomerDisplay(activeTerminalOrder.table_or_channel)}`
-                            : 'Số tiền cần thu'}
-                    </p>
-                    <p className="font-mono tabular-nums text-lg font-bold text-white">
-                      {formatVND(activeTerminalAmountVnd)}
-                    </p>
+              {terminalIsCashOnly ? (
+                <div className="rounded-xl border border-[#A7F3D0] bg-[#ECFDF5] px-5 py-7 text-center space-y-2">
+                  <div className="mx-auto size-10 rounded-full bg-white text-[#065F46] border border-[#A7F3D0] flex items-center justify-center">
+                    <Banknote className="size-5" aria-hidden="true" />
+                  </div>
+                  <p className="text-sm font-semibold text-[#065F46]">Thu tiền mặt tại quầy</p>
+                  <p className="font-sans tabular-nums text-2xl font-bold text-[#065F46]">
+                    {formatVND(draft?.totalVnd ?? 0)}
+                  </p>
+                  <p className="text-xs text-[#047857]">
+                    Đơn tiền mặt không cần quét mã chuyển khoản.
+                  </p>
+                </div>
+              ) : activeTerminalQrUrl ? (
+                <div className="flex flex-col items-center space-y-3">
+                  <div className="rounded-xl border border-[#EAE0E7] bg-white p-2.5 shadow-xs">
+                    <Image
+                      src={activeTerminalQrUrl}
+                      alt="Mã VietQR thanh toán"
+                      width={192}
+                      height={224}
+                      unoptimized
+                      className="w-44 h-auto min-h-[190px] object-contain"
+                    />
                   </div>
 
-                  {activeTerminalOrder && (
-                    <Button
-                      type="button"
-                      onClick={() => onProceedToReceiptVerify(activeTerminalOrder)}
-                      className="min-h-[38px] rounded-xl bg-white text-[#18151F] hover:bg-white/90 text-xs font-semibold cursor-pointer"
-                    >
-                      <ShieldCheck className="size-3.5 text-primary" aria-hidden="true" />
-                      <span>Kiểm duyệt CK</span>
-                    </Button>
-                  )}
+                  <div className="w-full flex items-center justify-between gap-2 rounded-lg border border-[#F0D2E2] bg-white/95 px-3.5 py-2.5">
+                    <div className="min-w-0">
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        {savedOrderResult?.order
+                          ? `Đơn ${savedOrderResult.order.order_code} • Chờ quét`
+                          : draft
+                            ? 'Số tiền dự kiến'
+                            : activeTerminalOrder
+                              ? cleanCustomerDisplay(activeTerminalOrder.customer_name) ||
+                                cleanCustomerDisplay(activeTerminalOrder.table_or_channel)
+                              : 'Số tiền cần thu'}
+                      </p>
+                      <p className="font-sans tabular-nums text-lg font-bold text-[#A50064]">
+                        {formatVND(activeTerminalAmountVnd)}
+                      </p>
+                    </div>
+
+                    {activeTerminalOrder && (
+                      <Button
+                        type="button"
+                        onClick={() => onProceedToReceiptVerify(activeTerminalOrder)}
+                        className="min-h-[36px] rounded-lg border border-[#EAB8D2] bg-[#FDF2F8] text-[#A50064] hover:bg-[#FCE7F3] text-xs font-semibold cursor-pointer shrink-0 shadow-none"
+                      >
+                        <ShieldCheck className="size-3.5 text-[#A50064]" aria-hidden="true" />
+                        <span>Kiểm duyệt CK</span>
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-white/15 bg-white/[0.06] px-4 py-7 text-center text-xs text-white/70">
-                Chọn món từ thực đơn hoặc lên đơn để sinh mã VietQR tự động.
-              </div>
-            )}
+              ) : (
+                <div className="rounded-lg border border-[#F0D2E2] bg-white/80 px-4 py-6 text-center text-xs text-muted-foreground">
+                  Chọn món từ thực đơn hoặc lên đơn để sinh mã VietQR tự động.
+                </div>
+              )}
+            </div>
           </section>
 
           {/* Clickable Recent Orders List */}
-          <section aria-labelledby="recent-orders-heading" className="glass-panel rounded-2xl p-5 space-y-3">
+          <section aria-labelledby="recent-orders-heading" className="surface-card rounded-xl p-4 space-y-2.5">
             <div className="flex items-center justify-between">
               <h3 id="recent-orders-heading" className="text-sm font-semibold text-foreground">
                 Đơn gần đây
               </h3>
-              <span className="font-mono tabular-nums text-xs text-muted-foreground">
+              <span className="tabular-nums text-xs text-muted-foreground">
                 {orders.length} đơn
               </span>
             </div>
 
-            <div className="divide-y divide-border/75 max-h-[250px] overflow-y-auto pr-1">
+            <div className="divide-y divide-[#F0E7ED] max-h-[250px] overflow-y-auto pr-1">
               {orders.slice(0, 8).map((order) => {
                 const displayCustomer = cleanCustomerDisplay(order.customer_name);
                 const displayChannel = cleanCustomerDisplay(order.table_or_channel);
+                const showCustomerSuffix =
+                  Boolean(displayCustomer) &&
+                  displayCustomer.trim().toLowerCase() !== displayChannel.trim().toLowerCase();
                 const isSelected = activeTerminalOrder?.id === order.id && !draft;
 
                 return (
@@ -1188,8 +1197,10 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                         setInspectedOrderId(order.id);
                       }
                     }}
-                    className={`py-2.5 px-2 -mx-2 rounded-xl flex items-center justify-between gap-2 transition-colors cursor-pointer ${
-                      isSelected ? 'bg-white/90 shadow-2xs' : 'hover:bg-white/50'
+                    className={`py-2.5 px-2.5 rounded-lg flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                      isSelected
+                        ? 'bg-[#FDF2F8] border border-[#F3D0E2]'
+                        : 'hover:bg-[#FBF8FA] border border-transparent'
                     }`}
                   >
                     <div className="min-w-0">
@@ -1201,12 +1212,12 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                       </div>
                       <p className="text-[11px] text-muted-foreground truncate mt-0.5">
                         {displayChannel}
-                        {displayCustomer ? ` • ${displayCustomer}` : ''}
+                        {showCustomerSuffix ? ` • ${displayCustomer}` : ''}
                       </p>
                     </div>
 
                     <div className="text-right shrink-0 flex items-center gap-2">
-                      <span className="font-mono tabular-nums text-xs font-bold text-foreground">
+                      <span className="font-sans tabular-nums text-xs font-bold text-foreground">
                         {formatVND(order.total_vnd)}
                       </span>
                       {order.status === 'pending_payment' && (
@@ -1216,7 +1227,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                             e.stopPropagation();
                             onProceedToReceiptVerify(order);
                           }}
-                          className="min-h-[30px] px-2 rounded-lg bg-primary/10 text-[11px] font-semibold text-primary hover:bg-primary/15 cursor-pointer"
+                          className="min-h-[28px] px-2 rounded-md border border-[#EAB8D2] bg-[#FDF2F8] text-[11px] font-semibold text-primary hover:bg-[#FCE7F3] cursor-pointer"
                         >
                           Soát bill
                         </button>

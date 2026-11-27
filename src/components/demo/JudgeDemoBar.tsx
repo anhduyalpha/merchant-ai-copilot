@@ -115,22 +115,22 @@ export function JudgeDemoBar({
       aria-modal="true"
       aria-label="Bộ mô phỏng nhanh"
     >
-      {/* Frosted backdrop */}
+      {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-[#18151F]/25 backdrop-blur-xs transition-opacity"
+        className="fixed inset-0 bg-[#231520]/20 backdrop-blur-[2px] transition-opacity"
         onClick={onClose}
         aria-hidden="true"
       />
 
       {/* Slide-over drawer */}
-      <aside className="relative z-10 flex h-full w-full max-w-[390px] flex-col glass-elevated border-l border-white/80">
-        <div className="flex items-center justify-between gap-3 border-b border-border/80 px-5 py-4">
+      <aside className="relative z-10 flex h-full w-full max-w-[390px] flex-col bg-white border-l border-[#EAE0E7] shadow-xl">
+        <div className="flex items-center justify-between gap-3 border-b border-[#EAE0E7] px-5 py-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h2 className="text-base font-semibold tracking-tight text-foreground">
                 Bộ mô phỏng nhanh
               </h2>
-              <kbd className="rounded border border-border bg-white/80 px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground">
+              <kbd className="rounded border border-[#EAE0E7] bg-[#FBF8FA] px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground">
                 Alt+D
               </kbd>
             </div>
@@ -143,7 +143,7 @@ export function JudgeDemoBar({
             type="button"
             onClick={onClose}
             aria-label="Đóng bộ mô phỏng"
-            className="size-9 shrink-0 rounded-lg border border-border bg-white/75 text-muted-foreground hover:text-foreground hover:bg-white inline-flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="size-9 shrink-0 rounded-lg border border-[#EAE0E7] bg-white text-muted-foreground hover:text-foreground hover:bg-[#FBF8FA] inline-flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <X className="size-4" aria-hidden="true" />
           </button>
@@ -161,15 +161,15 @@ export function JudgeDemoBar({
                   onSelectPreset(item.id);
                   onClose();
                 }}
-                className={`w-full rounded-xl border p-3.5 text-left transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                className={`w-full rounded-lg border p-3.5 text-left transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                   isSelected
-                    ? 'border-primary/40 bg-white shadow-sm ring-1 ring-primary/20'
-                    : 'border-white/90 bg-white/70 hover:bg-white hover:border-border'
+                    ? 'border-[#EAB8D2] bg-[#FDF2F8]/80 shadow-2xs ring-1 ring-[#A50064]/15'
+                    : 'border-[#EAE0E7] bg-white hover:bg-[#FBF8FA] hover:border-[#DFC7D7]'
                 }`}
               >
                 <div className="flex items-start justify-between gap-2.5">
                   <div className="flex items-start gap-2.5 min-w-0">
-                    <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#18151F]/5 text-foreground">
+                    <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#FDF2F8] text-[#A50064]">
                       <Icon className="size-4" aria-hidden="true" />
                     </span>
                     <div className="min-w-0">
@@ -180,7 +180,7 @@ export function JudgeDemoBar({
                       <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
                         {item.subtitle}
                       </p>
-                      <span className="mt-2 inline-block rounded-md bg-black/[0.04] px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                      <span className="mt-2 inline-block rounded bg-[#F5EEF3] px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                         {item.screenHint}
                       </span>
                     </div>
@@ -192,13 +192,13 @@ export function JudgeDemoBar({
           })}
         </div>
 
-        <div className="border-t border-border/80 p-4 bg-white/60">
+        <div className="border-t border-[#EAE0E7] p-4 bg-[#FBF8FA]">
           <Button
             type="button"
             variant="outline"
             disabled={isResetting}
             onClick={() => void onResetDemo()}
-            className="min-h-[44px] w-full rounded-xl border-border bg-white text-foreground hover:bg-white/90 font-medium cursor-pointer"
+            className="min-h-[44px] w-full rounded-lg border-[#EAE0E7] bg-white text-foreground hover:bg-[#FDF2F8] hover:border-[#EAB8D2] font-medium cursor-pointer"
           >
             <RotateCcw
               className={`size-4 text-muted-foreground ${isResetting ? 'animate-spin' : ''}`}

@@ -169,91 +169,106 @@ export const OperationsCopilotPanel = forwardRef<
   const maxSoldCount = Math.max(1, topSellers[0]?.daily_sold_count ?? 1);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {/* Top Bento Analytics Row (Live from Supabase — zero empty state) */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-        {/* Dark Smoked-Glass Shift Revenue Hero Card */}
-        <section aria-labelledby="shift-hero-heading" className="xl:col-span-7 glass-dark relative overflow-hidden rounded-2xl p-6 flex flex-col justify-between gap-5">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch">
+        {/* Light Harmonious MoMo Blush Shift Revenue Hero Card */}
+        <section
+          aria-labelledby="shift-hero-heading"
+          className="xl:col-span-7 surface-blush relative overflow-hidden rounded-xl p-5 flex flex-col justify-between gap-4"
+        >
           <div
-            className="pointer-events-none absolute -top-24 -right-12 h-56 w-72 rounded-full blur-[80px]"
-            style={{ background: 'radial-gradient(circle, rgba(165, 0, 100, 0.36) 0%, transparent 72%)' }}
+            className="h-1 w-full absolute top-0 inset-x-0 bg-gradient-to-r from-[#A50064] via-[#D82D8B] to-[#F472B6]"
             aria-hidden="true"
           />
 
-          <div className="relative flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-4 pt-0.5">
             <div>
-              <p id="shift-hero-heading" className="text-xs font-medium text-white/65">
+              <p id="shift-hero-heading" className="text-xs font-medium text-muted-foreground">
                 Doanh thu thực thu trong ca
               </p>
-              <p className="mt-1 font-mono tabular-nums text-3xl sm:text-4xl font-bold tracking-tight text-white">
+              <p className="mt-1 font-sans tabular-nums text-3xl sm:text-4xl font-bold tracking-tight text-foreground">
                 {formatVND(paidRevenueVnd)}
               </p>
             </div>
 
             <div className="flex gap-4 text-right">
               <div>
-                <p className="text-[11px] text-white/60">Đơn hoàn tất</p>
-                <p className="mt-0.5 font-mono tabular-nums text-lg font-bold text-white">
+                <p className="text-[11px] text-muted-foreground">Đơn hoàn tất</p>
+                <p className="mt-0.5 font-sans tabular-nums text-lg font-bold text-foreground">
                   {paidOrderCount}
                 </p>
               </div>
-              <div className="pl-4 border-l border-white/15">
-                <p className="text-[11px] text-white/60">Trung bình / đơn</p>
-                <p className="mt-0.5 font-mono tabular-nums text-lg font-bold text-white">
+              <div className="pl-4 border-l border-[#EFE0E9]">
+                <p className="text-[11px] text-muted-foreground">Trung bình / đơn</p>
+                <p className="mt-0.5 font-sans tabular-nums text-lg font-bold text-foreground">
                   {formatVND(avgTicketVnd)}
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Payment Mix Split Bar */}
-          <div className="relative space-y-2.5">
-            <div className="h-2.5 w-full rounded-full bg-white/10 overflow-hidden flex">
-              {transferPct > 0 && (
-                <div
-                  className="h-full bg-[#D82D8B]"
-                  style={{ width: `${transferPct}%` }}
-                  title={`Chuyển khoản: ${formatVND(transferVnd)}`}
-                />
-              )}
-              {cashPct > 0 && (
-                <div
-                  className="h-full bg-emerald-400"
-                  style={{ width: `${cashPct}%` }}
-                  title={`Tiền mặt: ${formatVND(cashVnd)}`}
-                />
-              )}
-              {debtPct > 0 && (
-                <div
-                  className="h-full bg-amber-400"
-                  style={{ width: `${debtPct}%` }}
-                  title={`Ghi sổ: ${formatVND(totalOpenDebtVnd)}`}
-                />
-              )}
+          {/* 3-Tile Payment Breakdown (Fills middle meaningfully without dark void) */}
+          <div className="grid grid-cols-3 gap-2.5">
+            <div className="rounded-lg border border-[#EAE0E7] bg-white px-3 py-2.5">
+              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <span className="size-2 rounded-full bg-[#A50064] shrink-0" aria-hidden="true" />
+                <span className="truncate">Chuyển khoản</span>
+              </div>
+              <p className="mt-1 font-sans tabular-nums text-sm font-bold text-foreground">
+                {formatVND(transferVnd)}
+              </p>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-white/75">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-[#D82D8B]" aria-hidden="true" />
-                Chuyển khoản:{' '}
-                <strong className="font-mono tabular-nums text-white">{formatVND(transferVnd)}</strong>
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-emerald-400" aria-hidden="true" />
-                Tiền mặt:{' '}
-                <strong className="font-mono tabular-nums text-white">{formatVND(cashVnd)}</strong>
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-amber-400" aria-hidden="true" />
-                Ghi sổ:{' '}
-                <strong className="font-mono tabular-nums text-amber-200">{formatVND(totalOpenDebtVnd)}</strong>
-              </span>
+            <div className="rounded-lg border border-[#EAE0E7] bg-white px-3 py-2.5">
+              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <span className="size-2 rounded-full bg-[#0F766E] shrink-0" aria-hidden="true" />
+                <span className="truncate">Tiền mặt</span>
+              </div>
+              <p className="mt-1 font-sans tabular-nums text-sm font-bold text-foreground">
+                {formatVND(cashVnd)}
+              </p>
             </div>
+
+            <div className="rounded-lg border border-[#EAE0E7] bg-white px-3 py-2.5">
+              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <span className="size-2 rounded-full bg-[#B45309] shrink-0" aria-hidden="true" />
+                <span className="truncate">Ghi sổ</span>
+              </div>
+              <p className="mt-1 font-sans tabular-nums text-sm font-bold text-[#B45309]">
+                {formatVND(totalOpenDebtVnd)}
+              </p>
+            </div>
+          </div>
+
+          {/* Payment Mix Split Bar */}
+          <div className="h-2 w-full rounded-full bg-[#F1E6EE] overflow-hidden flex">
+            {transferPct > 0 && (
+              <div
+                className="h-full bg-[#A50064]"
+                style={{ width: `${transferPct}%` }}
+                title={`Chuyển khoản: ${formatVND(transferVnd)}`}
+              />
+            )}
+            {cashPct > 0 && (
+              <div
+                className="h-full bg-[#0F766E]"
+                style={{ width: `${cashPct}%` }}
+                title={`Tiền mặt: ${formatVND(cashVnd)}`}
+              />
+            )}
+            {debtPct > 0 && (
+              <div
+                className="h-full bg-[#D97706]"
+                style={{ width: `${debtPct}%` }}
+                title={`Ghi sổ: ${formatVND(totalOpenDebtVnd)}`}
+              />
+            )}
           </div>
         </section>
 
         {/* Live Menu Performance Card */}
-        <section aria-labelledby="menu-perf-heading" className="xl:col-span-5 glass-panel rounded-2xl p-5 space-y-4">
+        <section aria-labelledby="menu-perf-heading" className="xl:col-span-5 surface-card rounded-xl p-5 space-y-3.5">
           <div className="flex items-center justify-between">
             <h2 id="menu-perf-heading" className="text-[15px] font-semibold tracking-tight text-foreground">
               Hiệu suất thực đơn
@@ -271,13 +286,13 @@ export const OperationsCopilotPanel = forwardRef<
                 <div key={item.id} className="space-y-1">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-medium text-foreground truncate">{item.name}</span>
-                    <span className="font-mono tabular-nums text-muted-foreground shrink-0">
+                    <span className="font-sans tabular-nums text-muted-foreground shrink-0">
                       {item.daily_sold_count} ly
                     </span>
                   </div>
-                  <div className="h-1.5 w-full rounded-full bg-black/[0.06] overflow-hidden">
+                  <div className="h-1.5 w-full rounded-full bg-[#F3EBF0] overflow-hidden">
                     <div
-                      className="h-full rounded-full bg-primary"
+                      className="h-full rounded-full bg-gradient-to-r from-[#A50064] to-[#D82D8B]"
                       style={{ width: `${pct}%` }}
                     />
                   </div>
@@ -287,7 +302,7 @@ export const OperationsCopilotPanel = forwardRef<
           </div>
 
           {slowSellers.length > 0 && (
-            <div className="pt-2.5 border-t border-border/75 space-y-1.5">
+            <div className="pt-2.5 border-t border-[#EAE0E7] space-y-1.5">
               <p className="text-[11px] font-semibold text-[#B45309] inline-flex items-center gap-1">
                 <TrendingDown className="size-3.5" aria-hidden="true" />
                 Cần đẩy bán trong ca
@@ -296,10 +311,10 @@ export const OperationsCopilotPanel = forwardRef<
                 {slowSellers.map((item) => (
                   <span
                     key={item.id}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#B45309]/20 bg-[#FFFBEB]/80 px-2.5 py-1 text-xs text-foreground"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#F3DFB4] bg-[#FFFBEB] px-2.5 py-1 text-xs text-foreground"
                   >
                     <span className="font-medium">{item.name}</span>
-                    <span className="font-mono tabular-nums text-[11px] text-[#B45309]">
+                    <span className="font-sans tabular-nums text-[11px] text-[#B45309]">
                       ({item.daily_sold_count} ly)
                     </span>
                   </span>
@@ -311,146 +326,155 @@ export const OperationsCopilotPanel = forwardRef<
       </div>
 
       {/* Lower 12-Col Split: Shop Assistant + Debt Ledger */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch">
         {/* Left 7 Columns: Natural-Language Shop Copilot */}
-        <div className="xl:col-span-7 space-y-4">
-          <section aria-labelledby="assistant-heading" className="glass-panel rounded-2xl p-5 space-y-4">
-            <div>
-              <h2 id="assistant-heading" className="text-[15px] font-semibold tracking-tight text-foreground">
-                Trợ lý điều hành
-              </h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Hỏi đáp trực tiếp trên số liệu doanh thu, thực đơn và sổ nợ của quán.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {QUICK_PROMPTS.map((item, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => {
-                    setPrompt(item.prompt);
-                    void runCopilot(item.prompt);
-                  }}
-                  className="min-h-[34px] rounded-xl border border-white/90 bg-white/75 px-3 py-1.5 text-left text-xs font-medium text-foreground hover:bg-white hover:border-primary/30 transition-colors cursor-pointer"
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void runCopilot(prompt);
-              }}
-              className="flex flex-col sm:flex-row gap-2"
-            >
-              <Input
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                aria-label="Câu hỏi cho trợ lý điều hành"
-                placeholder="Hỏi về doanh thu ca, món cần đẩy bán hoặc soạn tin nhắc khách ghi sổ..."
-                className="min-h-[44px] flex-1 bg-white/85 border-white/90 rounded-xl text-sm"
-              />
-              <Button
-                type="submit"
-                disabled={isLoading}
-                className="min-h-[44px] px-5 rounded-xl bg-primary text-primary-foreground hover:bg-[#8B0054] font-semibold text-sm cursor-pointer shrink-0"
-              >
-                {isLoading ? (
-                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                ) : (
-                  <Send className="size-4" aria-hidden="true" />
-                )}
-                <span>Hỏi ngay</span>
-              </Button>
-            </form>
-
-            {isLoading && (
-              <div className="rounded-xl border border-white/80 bg-white/60 p-4 space-y-2.5 animate-pulse">
-                <div className="h-4 w-48 rounded bg-black/10" />
-                <div className="h-14 rounded-lg bg-black/5" />
+        <div className="xl:col-span-7 flex">
+          <section
+            aria-labelledby="assistant-heading"
+            className="w-full surface-card rounded-xl p-5 flex flex-col justify-between gap-4"
+          >
+            <div className="space-y-4">
+              <div>
+                <h2 id="assistant-heading" className="text-[15px] font-semibold tracking-tight text-foreground">
+                  Trợ lý điều hành
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Hỏi đáp trực tiếp trên số liệu doanh thu, thực đơn và sổ nợ của quán.
+                </p>
               </div>
-            )}
 
-            {!isLoading && copilotData && (
-              <div className="rounded-xl border border-white/90 bg-white/80 p-4 space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-xs font-semibold text-foreground">Phân tích tổng hợp</span>
-                  {copilotData.invokedTools.length > 0 && (
-                    <span className="text-[11px] text-muted-foreground">
-                      Nguồn:{' '}
-                      {copilotData.invokedTools
-                        .map((t) => TOOL_LABELS_VI[t] ?? t)
-                        .join(' • ')}
-                    </span>
+              <div className="flex flex-wrap gap-2">
+                {QUICK_PROMPTS.map((item, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setPrompt(item.prompt);
+                      void runCopilot(item.prompt);
+                    }}
+                    className="min-h-[34px] rounded-lg border border-[#EAE0E7] bg-[#FBF8FA] px-3 py-1.5 text-left text-xs font-medium text-foreground hover:bg-[#FDF2F8] hover:border-[#EAB8D2] hover:text-[#A50064] transition-colors cursor-pointer"
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void runCopilot(prompt);
+                }}
+                className="flex flex-col sm:flex-row gap-2"
+              >
+                <Input
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  aria-label="Câu hỏi cho trợ lý điều hành"
+                  placeholder="Hỏi về doanh thu, món bán chậm hoặc nhắc khách ghi sổ..."
+                  className="min-h-[42px] flex-1 bg-white border-[#DFD1DB] rounded-lg text-sm"
+                />
+                <Button
+                  type="submit"
+                  disabled={isLoading}
+                  className="min-h-[42px] px-5 rounded-lg bg-primary text-primary-foreground hover:bg-[#8B0054] font-semibold text-sm cursor-pointer shrink-0 shadow-xs"
+                >
+                  {isLoading ? (
+                    <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Send className="size-4" aria-hidden="true" />
+                  )}
+                  <span>Hỏi ngay</span>
+                </Button>
+              </form>
+
+              {isLoading && (
+                <div className="rounded-lg border border-[#EAE0E7] bg-[#FBF8FA] p-4 space-y-2.5 animate-pulse">
+                  <div className="h-4 w-48 rounded bg-[#EFE0E9]" />
+                  <div className="h-14 rounded-lg bg-[#F5EEF3]" />
+                </div>
+              )}
+
+              {!isLoading && copilotData && (
+                <div className="rounded-lg border border-[#EAE0E7] bg-[#FBF8FA] p-4 space-y-3.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-foreground">Phân tích tổng hợp</span>
+                    {copilotData.invokedTools.length > 0 && (
+                      <span className="text-[11px] text-muted-foreground">
+                        Nguồn:{' '}
+                        {copilotData.invokedTools
+                          .map((t) => TOOL_LABELS_VI[t] ?? t)
+                          .join(' • ')}
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-sm text-foreground leading-relaxed rounded-lg bg-white border border-[#EAE0E7] p-3.5">
+                    {cleanMerchantCopy(copilotData.summaryVi)}
+                  </p>
+
+                  {copilotData.highlightsVi.length > 0 && (
+                    <ul className="space-y-1.5 text-xs text-muted-foreground list-disc pl-5">
+                      {copilotData.highlightsVi.map((h, idx) => (
+                        <li key={idx} className="leading-relaxed">
+                          {cleanMerchantCopy(h)}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {copilotData.slowMovingItems.length > 0 && (
+                    <div className="space-y-2 pt-1">
+                      <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <TrendingDown className="size-4 text-[#B45309]" aria-hidden="true" />
+                        Gợi ý đẩy món bán chậm
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {copilotData.slowMovingItems.map((item) => (
+                          <div
+                            key={item.sku}
+                            className="rounded-lg border border-[#F3DFB4] bg-[#FFFBEB] p-3 text-xs space-y-1"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-semibold text-foreground">{item.name}</span>
+                              <span className="font-sans tabular-nums text-[11px] font-semibold text-[#B45309]">
+                                {item.dailySoldCount} ly
+                              </span>
+                            </div>
+                            <p className="text-muted-foreground leading-relaxed">
+                              {cleanMerchantCopy(item.suggestionVi)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
-
-                <p className="text-sm text-foreground leading-relaxed rounded-xl bg-[#F4F3F8]/80 border border-border/60 p-3.5">
-                  {cleanMerchantCopy(copilotData.summaryVi)}
-                </p>
-
-                {copilotData.highlightsVi.length > 0 && (
-                  <ul className="space-y-1.5 text-xs text-muted-foreground list-disc pl-5">
-                    {copilotData.highlightsVi.map((h, idx) => (
-                      <li key={idx} className="leading-relaxed">
-                        {cleanMerchantCopy(h)}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                {copilotData.slowMovingItems.length > 0 && (
-                  <div className="space-y-2 pt-1">
-                    <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                      <TrendingDown className="size-4 text-[#B45309]" aria-hidden="true" />
-                      Gợi ý đẩy món bán chậm
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      {copilotData.slowMovingItems.map((item) => (
-                        <div
-                          key={item.sku}
-                          className="rounded-xl border border-[#B45309]/20 bg-[#FFFBEB]/80 p-3 text-xs space-y-1"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-semibold text-foreground">{item.name}</span>
-                            <span className="font-mono tabular-nums text-[11px] font-semibold text-[#B45309]">
-                              {item.dailySoldCount} ly
-                            </span>
-                          </div>
-                          <p className="text-muted-foreground leading-relaxed">
-                            {cleanMerchantCopy(item.suggestionVi)}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+              )}
+            </div>
 
             {!isLoading && !copilotData && (
-              <div className="rounded-xl border border-white/85 bg-white/55 px-4 py-3 text-xs text-muted-foreground flex items-center justify-between gap-3">
-                <span>
-                  Tóm tắt nhanh: Đang có{' '}
-                  <strong className="font-mono tabular-nums text-foreground">
-                    {debts.filter((d) => d.status !== 'settled').length}
-                  </strong>{' '}
-                  khách ghi sổ ({formatVND(totalOpenDebtVnd)}) và{' '}
-                  <strong className="font-mono tabular-nums text-foreground">{slowSellers.length}</strong>{' '}
-                  món cần đẩy bán chiều nay.
-                </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 rounded-lg border border-[#F0D2E2] bg-[#FFF8FB] p-3.5 text-xs">
+                <div>
+                  <p className="text-[11px] text-muted-foreground">Khách ghi sổ chưa tất toán</p>
+                  <p className="mt-0.5 font-sans tabular-nums font-semibold text-foreground">
+                    {debts.filter((d) => d.status !== 'settled').length} khách •{' '}
+                    <span className="text-[#B45309]">{formatVND(totalOpenDebtVnd)}</span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[11px] text-muted-foreground">Món cần đẩy bán chiều nay</p>
+                  <p className="mt-0.5 font-sans tabular-nums font-semibold text-foreground">
+                    {slowSellers.length} món có lượng gọi thấp
+                  </p>
+                </div>
               </div>
             )}
           </section>
         </div>
 
         {/* Right 5 Columns: Customer Debt Ledger */}
-        <div className="xl:col-span-5">
-          <section aria-labelledby="debt-ledger-heading" className="glass-panel rounded-2xl p-5 space-y-4">
+        <div className="xl:col-span-5 flex">
+          <section aria-labelledby="debt-ledger-heading" className="w-full surface-card rounded-xl p-5 space-y-3.5">
             <div className="flex items-start justify-between gap-2">
               <div>
                 <h2 id="debt-ledger-heading" className="text-[15px] font-semibold tracking-tight text-foreground">
@@ -462,7 +486,7 @@ export const OperationsCopilotPanel = forwardRef<
               </div>
               <div className="text-right shrink-0">
                 <p className="text-[11px] text-muted-foreground">Còn phải thu</p>
-                <p className="font-mono tabular-nums text-sm font-bold text-[#B45309]">
+                <p className="font-sans tabular-nums text-sm font-bold text-[#B45309]">
                   {formatVND(totalOpenDebtVnd)}
                 </p>
               </div>
@@ -484,7 +508,7 @@ export const OperationsCopilotPanel = forwardRef<
                 return (
                   <div
                     key={debt.id}
-                    className="rounded-xl border border-white/90 bg-white/80 p-3.5 space-y-3"
+                    className="rounded-lg border border-[#EAE0E7] bg-[#FBF8FA]/60 p-3.5 space-y-3"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
@@ -492,7 +516,7 @@ export const OperationsCopilotPanel = forwardRef<
                           <span className="text-sm font-semibold text-foreground">
                             {customerLabel}
                           </span>
-                          <span className="rounded bg-black/[0.045] px-1.5 py-0.5 font-mono text-[11px] font-medium text-muted-foreground">
+                          <span className="rounded bg-[#F5EEF3] px-1.5 py-0.5 font-mono text-[11px] font-medium text-muted-foreground">
                             {debt.order_code}
                           </span>
                         </div>
@@ -502,7 +526,7 @@ export const OperationsCopilotPanel = forwardRef<
                         )}
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="font-mono tabular-nums text-sm font-bold text-foreground">
+                        <p className="font-sans tabular-nums text-sm font-bold text-foreground">
                           {formatVND(debt.amount_due_vnd)}
                         </p>
                         <span
@@ -520,13 +544,13 @@ export const OperationsCopilotPanel = forwardRef<
                     </div>
 
                     {previewText && (
-                      <div className="rounded-lg bg-[#F4F3F8]/85 border border-border/60 p-2.5 text-xs text-foreground leading-relaxed break-words [overflow-wrap:anywhere]">
+                      <div className="rounded-lg bg-white border border-[#EAE0E7] p-2.5 text-xs text-foreground leading-relaxed break-words [overflow-wrap:anywhere]">
                         {previewText}
                       </div>
                     )}
 
                     {openQrCode === debt.order_code && qrToShow && (
-                      <div className="flex justify-center rounded-xl border border-border/70 bg-white p-2.5">
+                      <div className="flex justify-center rounded-lg border border-[#EAE0E7] bg-white p-2.5">
                         <Image
                           src={qrToShow}
                           alt={`Mã VietQR đơn ${debt.order_code}`}
@@ -543,7 +567,7 @@ export const OperationsCopilotPanel = forwardRef<
                         type="button"
                         variant="outline"
                         onClick={() => void handleCopyReminder(debt.order_code, copyText)}
-                        className="min-h-[40px] flex-1 rounded-xl border-border bg-white text-foreground hover:bg-white/90 cursor-pointer text-xs font-medium"
+                        className="min-h-[38px] flex-1 rounded-lg border-[#EAE0E7] bg-white text-foreground hover:bg-[#FDF2F8] hover:border-[#EAB8D2] cursor-pointer text-xs font-medium"
                       >
                         {copiedKey === debt.order_code ? (
                           <Check className="size-3.5 text-[#0F766E]" aria-hidden="true" />
@@ -562,7 +586,7 @@ export const OperationsCopilotPanel = forwardRef<
                             )
                           }
                           aria-label={`Xem mã VietQR đơn ${debt.order_code}`}
-                          className="min-h-[40px] min-w-[40px] rounded-xl border-border bg-white cursor-pointer"
+                          className="min-h-[38px] min-w-[38px] rounded-lg border-[#EAE0E7] bg-white hover:bg-[#FDF2F8] hover:border-[#EAB8D2] cursor-pointer"
                         >
                           <QrCode className="size-4 text-primary" />
                         </Button>
@@ -572,7 +596,7 @@ export const OperationsCopilotPanel = forwardRef<
                           type="button"
                           disabled={settlingId === debt.id}
                           onClick={() => void handleSettleDebt(debt.id, debt.order_code)}
-                          className="min-h-[40px] rounded-xl bg-[#0F766E] hover:bg-[#0D625B] text-white cursor-pointer text-xs font-medium"
+                          className="min-h-[38px] rounded-lg border border-[#A7F3D0] bg-[#ECFDF5] text-[#065F46] hover:bg-[#D1FAE5] cursor-pointer text-xs font-semibold shadow-none"
                         >
                           {settlingId === debt.id ? (
                             <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />

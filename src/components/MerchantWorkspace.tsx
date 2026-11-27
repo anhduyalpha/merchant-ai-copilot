@@ -232,29 +232,25 @@ export function MerchantWorkspace() {
 
   return (
     <div className="relative min-h-screen flex flex-col lg:flex-row text-foreground">
-      {/* Ambient Multi-Orb Liquid Glass Backdrop */}
-      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-[#F4F3F8]" aria-hidden="true">
+      {/* Harmonious Light MoMo Blush Backdrop */}
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-[#FBF8FA]" aria-hidden="true">
         <div
-          className="absolute -top-36 -left-24 h-[540px] w-[540px] rounded-full blur-[125px]"
-          style={{ background: 'radial-gradient(circle, rgba(165, 0, 100, 0.13) 0%, transparent 72%)' }}
+          className="absolute -top-40 -left-24 h-[520px] w-[520px] rounded-full blur-[120px]"
+          style={{ background: 'radial-gradient(circle, rgba(244, 114, 182, 0.11) 0%, transparent 72%)' }}
         />
         <div
-          className="absolute top-[18%] -right-32 h-[500px] w-[500px] rounded-full blur-[130px]"
-          style={{ background: 'radial-gradient(circle, rgba(217, 119, 6, 0.095) 0%, transparent 72%)' }}
-        />
-        <div
-          className="absolute -bottom-36 left-[28%] h-[520px] w-[520px] rounded-full blur-[135px]"
-          style={{ background: 'radial-gradient(circle, rgba(13, 148, 136, 0.095) 0%, transparent 72%)' }}
+          className="absolute -top-24 -right-24 h-[460px] w-[460px] rounded-full blur-[120px]"
+          style={{ background: 'radial-gradient(circle, rgba(165, 0, 100, 0.06) 0%, transparent 72%)' }}
         />
       </div>
 
-      {/* Desktop Frosted Left Navigation Rail (>=1024px) */}
-      <aside className="hidden lg:flex lg:w-[244px] lg:shrink-0 lg:sticky lg:top-0 lg:h-screen flex-col justify-between glass-elevated border-r border-white/80 px-3.5 py-4 z-30">
+      {/* Desktop Left Navigation Rail (>=1024px) */}
+      <aside className="hidden lg:flex lg:w-[244px] lg:shrink-0 lg:sticky lg:top-0 lg:h-screen flex-col justify-between bg-white border-r border-[#EAE0E7] px-3.5 py-4 z-30">
         <div className="space-y-5">
           {/* Brand + Live Shift Indicator */}
           <div className="px-1.5 space-y-2.5" ref={statusMenuRef}>
             <div className="flex items-center gap-2.5">
-              <div className="size-9 rounded-xl bg-[#18151F] text-white flex items-center justify-center shadow-sm shrink-0">
+              <div className="size-9 rounded-lg bg-gradient-to-br from-[#A50064] to-[#D82D8B] text-white flex items-center justify-center shadow-xs shrink-0">
                 <Coffee className="size-4" aria-hidden="true" />
               </div>
               <div className="min-w-0">
@@ -272,7 +268,7 @@ export function MerchantWorkspace() {
                 type="button"
                 onClick={() => setStatusPopoverOpen((prev) => !prev)}
                 aria-expanded={statusPopoverOpen}
-                className="w-full min-h-[34px] rounded-lg border border-border/80 bg-white/70 px-2.5 py-1.5 flex items-center justify-between gap-2 text-xs text-foreground hover:bg-white transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="w-full min-h-[34px] rounded-lg border border-[#EAE0E7] bg-[#FBF8FA] px-2.5 py-1.5 flex items-center justify-between gap-2 text-xs text-foreground hover:bg-[#FDF2F8]/70 hover:border-[#F0D2E2] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 <span className="inline-flex items-center gap-2 min-w-0">
                   <span className="relative flex size-2 shrink-0" aria-hidden="true">
@@ -292,7 +288,7 @@ export function MerchantWorkspace() {
               </button>
 
               {statusPopoverOpen && (
-                <div className="absolute left-0 top-10 z-50 w-64 rounded-xl glass-elevated p-3.5 text-xs shadow-xl">
+                <div className="absolute left-0 top-10 z-50 w-64 rounded-xl surface-elevated p-3.5 text-xs">
                   <p className="font-semibold text-foreground mb-2">Trạng thái kết nối</p>
                   <div className="space-y-1.5 text-muted-foreground">
                     <div className="flex items-center justify-between">
@@ -326,15 +322,15 @@ export function MerchantWorkspace() {
                   type="button"
                   aria-current={isActive ? 'page' : undefined}
                   onClick={() => setActiveTab(item.id)}
-                  className={`relative w-full min-h-[44px] rounded-xl px-3 py-2 flex items-center justify-between gap-2 text-sm font-medium transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                  className={`relative w-full min-h-[42px] rounded-lg px-3 py-2 flex items-center justify-between gap-2 text-sm transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                     isActive
-                      ? 'bg-white text-foreground shadow-[0_6px_20px_rgba(24,20,38,0.07)] border border-white'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-white/50 border border-transparent'
+                      ? 'bg-[#FDF2F8] text-[#A50064] font-semibold border border-[#F3D0E2]'
+                      : 'text-muted-foreground font-medium hover:text-foreground hover:bg-[#F9F4F7] border border-transparent'
                   }`}
                 >
                   {isActive && (
                     <span
-                      className="absolute left-0 top-2.5 bottom-2.5 w-[3px] rounded-r-full bg-primary"
+                      className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full bg-primary"
                       aria-hidden="true"
                     />
                   )}
@@ -348,7 +344,7 @@ export function MerchantWorkspace() {
 
                   {item.badgeCount !== undefined && item.badgeCount > 0 && (
                     <span
-                      className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full font-mono tabular-nums text-[11px] font-semibold ${
+                      className={`inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full tabular-nums text-[11px] font-semibold ${
                         item.badgeTone === 'danger'
                           ? 'bg-[#FFF1F2] text-[#BE123C]'
                           : 'bg-[#FFFBEB] text-[#B45309]'
@@ -364,20 +360,20 @@ export function MerchantWorkspace() {
         </div>
 
         {/* Bottom: Live Shift Pill + Discreet Simulator Drawer Trigger */}
-        <div className="space-y-2.5 pt-3 border-t border-border/70">
-          <div className="rounded-xl border border-white/90 bg-white/65 p-3 space-y-2">
+        <div className="space-y-2.5 pt-3 border-t border-[#EAE0E7]">
+          <div className="rounded-xl border border-[#F0D2E2] bg-[#FFF8FB] p-3 space-y-2">
             <div className="flex items-center justify-between text-[11px] text-muted-foreground">
               <span className="font-medium">Ca bán hôm nay</span>
-              <span className="font-mono tabular-nums">
+              <span className="tabular-nums">
                 {summary ? `${summary.paidOrderCount} đã thu` : '...'}
               </span>
             </div>
-            <p className="font-mono tabular-nums text-lg font-bold tracking-tight text-foreground">
+            <p className="font-sans tabular-nums text-lg font-bold tracking-tight text-foreground">
               {summary ? formatVND(summary.paidRevenueVnd) : '...'}
             </p>
-            <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-border/60">
-              <span>Chờ CK: <strong className="font-mono tabular-nums text-foreground">{summary?.pendingOrderCount ?? 0}</strong></span>
-              <span>Ghi sổ: <strong className="font-mono tabular-nums text-[#B45309]">{summary?.unpaidDebtCount ?? 0}</strong></span>
+            <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1.5 border-t border-[#F3DCE8]">
+              <span>Chờ CK: <strong className="tabular-nums text-foreground">{summary?.pendingOrderCount ?? 0}</strong></span>
+              <span>Ghi sổ: <strong className="tabular-nums text-[#B45309]">{summary?.unpaidDebtCount ?? 0}</strong></span>
             </div>
           </div>
 
@@ -385,23 +381,23 @@ export function MerchantWorkspace() {
             type="button"
             onClick={() => setSimulatorOpen(true)}
             aria-expanded={simulatorOpen}
-            className="w-full min-h-[40px] rounded-xl border border-border/80 bg-white/55 hover:bg-white px-3 py-2 flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="w-full min-h-[40px] rounded-lg border border-[#EAE0E7] bg-white hover:bg-[#FDF2F8]/60 hover:border-[#F0D2E2] px-3 py-2 flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <span className="inline-flex items-center gap-2">
               <SlidersHorizontal className="size-3.5 text-primary" aria-hidden="true" />
               <span>Bộ mô phỏng nhanh</span>
             </span>
-            <kbd className="rounded border border-border bg-white/80 px-1.5 py-0.5 font-mono text-[10px]">
+            <kbd className="rounded border border-[#EAE0E7] bg-[#FBF8FA] px-1.5 py-0.5 font-mono text-[10px]">
               Alt+D
             </kbd>
           </button>
         </div>
       </aside>
 
-      {/* Mobile & Tablet Top Frosted Bar (<1024px) */}
-      <header className="lg:hidden sticky top-0 z-30 h-14 px-4 flex items-center justify-between gap-3 glass-elevated border-b border-white/80">
+      {/* Mobile & Tablet Top Bar (<1024px) */}
+      <header className="lg:hidden sticky top-0 z-30 h-14 px-4 flex items-center justify-between gap-3 bg-white/95 backdrop-blur-md border-b border-[#EAE0E7]">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="size-8 rounded-lg bg-[#18151F] text-white flex items-center justify-center shrink-0">
+          <div className="size-8 rounded-lg bg-gradient-to-br from-[#A50064] to-[#D82D8B] text-white flex items-center justify-center shadow-xs shrink-0">
             <Coffee className="size-4" aria-hidden="true" />
           </div>
           <div className="min-w-0">
@@ -415,7 +411,7 @@ export function MerchantWorkspace() {
                 }`}
                 aria-hidden="true"
               />
-              <span>Ca sáng • {summary ? formatVND(summary.paidRevenueVnd) : '...'}</span>
+              <span className="tabular-nums">Ca sáng • {summary ? formatVND(summary.paidRevenueVnd) : '...'}</span>
             </p>
           </div>
         </div>
@@ -424,7 +420,7 @@ export function MerchantWorkspace() {
           type="button"
           onClick={() => setSimulatorOpen(true)}
           aria-expanded={simulatorOpen}
-          className="min-h-[36px] rounded-lg border border-border/80 bg-white/80 px-2.5 py-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-foreground hover:bg-white cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary shrink-0"
+          className="min-h-[36px] rounded-lg border border-[#EAE0E7] bg-white px-2.5 py-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-foreground hover:bg-[#FDF2F8] hover:border-[#F0D2E2] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary shrink-0"
         >
           <SlidersHorizontal className="size-3.5 text-primary" aria-hidden="true" />
           <span>Mô phỏng</span>
@@ -471,10 +467,10 @@ export function MerchantWorkspace() {
         </main>
       </div>
 
-      {/* Mobile & Tablet Floating Frosted Bottom Dock (<1024px) */}
+      {/* Mobile & Tablet Floating Bottom Dock (<1024px) */}
       <nav
         aria-label="Điều hướng di động"
-        className="lg:hidden fixed bottom-3 inset-x-3 z-30 rounded-2xl glass-elevated p-1.5 grid grid-cols-3 gap-1"
+        className="lg:hidden fixed bottom-3 inset-x-3 z-30 rounded-xl bg-white/95 backdrop-blur-md border border-[#EAE0E7] shadow-lg p-1.5 grid grid-cols-3 gap-1"
       >
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -484,19 +480,19 @@ export function MerchantWorkspace() {
               key={item.id}
               type="button"
               onClick={() => setActiveTab(item.id)}
-              className={`relative min-h-[46px] rounded-xl px-2 py-1.5 flex flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+              className={`relative min-h-[46px] rounded-lg px-2 py-1.5 flex flex-col items-center justify-center gap-0.5 text-[11px] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                 isActive
-                  ? 'bg-primary text-white shadow-xs'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-white/60'
+                  ? 'bg-[#FDF2F8] text-[#A50064] font-semibold border border-[#F3D0E2]'
+                  : 'text-muted-foreground font-medium hover:text-foreground hover:bg-[#FBF8FA] border border-transparent'
               }`}
             >
               <span className="relative">
                 <Icon className="size-4" aria-hidden="true" />
                 {item.badgeCount !== undefined && item.badgeCount > 0 && (
                   <span
-                    className={`absolute -top-1.5 -right-2.5 min-w-[15px] h-[15px] px-1 rounded-full font-mono tabular-nums text-[9px] font-bold flex items-center justify-center ${
+                    className={`absolute -top-1.5 -right-2.5 min-w-[15px] h-[15px] px-1 rounded-full tabular-nums text-[9px] font-bold flex items-center justify-center ${
                       isActive
-                        ? 'bg-white text-primary'
+                        ? 'bg-[#A50064] text-white'
                         : item.badgeTone === 'danger'
                           ? 'bg-[#BE123C] text-white'
                           : 'bg-[#B45309] text-white'
