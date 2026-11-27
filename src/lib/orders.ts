@@ -187,7 +187,12 @@ export async function persistOrderToSupabase(
     vietqrUrl =
       qrAmount > 0 ? buildVietQRUrl({ amount: qrAmount, addInfo: orderCode }) : null;
 
-    const status = draft.paymentMethod === 'debt' ? 'debt' : 'pending_payment';
+    const status =
+      draft.paymentMethod === 'debt'
+        ? 'debt'
+        : draft.paymentMethod === 'cash'
+          ? 'paid'
+          : 'pending_payment';
     const { data, error } = await supabase
       .from('orders')
       .insert({

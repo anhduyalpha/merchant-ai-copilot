@@ -13,8 +13,10 @@ import {
 import {
   ArrowRight,
   Banknote,
+  BookOpen,
   Camera,
   Check,
+  CheckCircle2,
   Copy,
   ImagePlus,
   Loader2,
@@ -132,6 +134,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
       vietqrUrl: string | null;
     } | null>(null);
     const [inspectedOrderId, setInspectedOrderId] = useState<string | null>(null);
+    const [cashReceivedVnd, setCashReceivedVnd] = useState<number>(0);
     const [copiedCode, setCopiedCode] = useState(false);
 
     const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
@@ -175,6 +178,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
           throw new Error(data.message || 'Không thể tách đơn hàng.');
         }
         setDraft(data.parsed as NormalizedOrderDraft);
+        setCashReceivedVnd(0);
         setDraftSourceType(mode);
         setReasoningVi(data.reasoningVi || '');
         toast.success('Đã tách xong món và tính tiền tự động.');
@@ -225,6 +229,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
         setImagePreviewUrl(null);
         setImagePayload(null);
         setDraft(null);
+        setCashReceivedVnd(0);
         setDraftSourceType('manual');
         setReasoningVi('');
         setSavedOrderResult(null);
@@ -296,6 +301,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
           confidence: 1,
         });
         setDraftSourceType('manual');
+        setCashReceivedVnd(0);
         setDraft(nextDraft);
         return;
       }
@@ -349,6 +355,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
 
       if (updatedItems.length === 0) {
         setDraft(null);
+        setCashReceivedVnd(0);
         return;
       }
       setDraft(recalculateDraft({ ...draft, items: updatedItems }));
@@ -357,6 +364,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
     function updatePaymentMethod(method: PaymentMethod) {
       if (!draft) return;
       setSavedOrderResult(null);
+      setCashReceivedVnd(0);
       const base = { ...draft, paymentMethod: method };
       if (method === 'split' && base.cashAmountVnd === 0) {
         const cashItemsTotal = base.items
@@ -395,7 +403,21 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
           vietqrUrl: (data.vietqrUrl as string | null) ?? null,
         });
         setInspectedOrderId(savedOrder.id);
-        toast.success(`Đã tạo đơn ${savedOrder.order_code} thành công.`);
+        setCashReceivedVnd(0);
+
+        if (savedOrder.payment_method === 'cash') {
+          toast.success(
+            `Đã thu tiền mặt ${formatVND(savedOrder.total_vnd)} — Hoàn tất đơn ${savedOrder.order_code}.`
+          );
+        } else if (savedOrder.payment_method === 'debt') {
+          toast.success(`Đã ghi sổ công nợ đơn ${savedOrder.order_code}.`);
+        } else if (savedOrder.payment_method === 'split') {
+          toast.success(
+            `Đã tạo đơn ${savedOrder.order_code} (Tiền mặt ${formatVND(savedOrder.cash_amount_vnd)} + VietQR ${formatVND(savedOrder.transfer_amount_vnd)}).`
+          );
+        } else {
+          toast.success(`Đã tạo đơn ${savedOrder.order_code} và xuất mã VietQR.`);
+        }
         await onOrderCreated();
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Lỗi lưu đơn hàng.');
@@ -504,10 +526,10 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
       });
     }, [menuItems, menuCategory, menuQuery]);
 
-    // Determine which order / draft feeds the Dark Smoked-Glass VietQR Terminal
+    // Determine which order / draft feeds the right-hand Payment Terminal
     const selectedHistoryOrder =
       orders.find((o) => o.id === inspectedOrderId) ??
-      orders.find((o) => o.status === 'pending_payment') ??
+      orders.find((o) => o.status === 'pending_payment' && o.payment_method !== 'cash') ??
       orders[0] ??
       null;
 
@@ -520,35 +542,61 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
       : 0;
 
     const activeTerminalOrder = savedOrderResult?.order ?? (draft ? null : selectedHistoryOrder);
-    const activeTerminalAmountVnd = savedOrderResult?.order
-      ? savedOrderResult.order.transfer_amount_vnd > 0
-        ? savedOrderResult.order.transfer_amount_vnd
-        : savedOrderResult.order.total_vnd
+    const activePaymentMethod: PaymentMethod = savedOrderResult?.order
+      ? savedOrderResult.order.payment_method
       : draft
-        ? draftTransferVnd
+        ? draft.paymentMethod
         : selectedHistoryOrder
-          ? selectedHistoryOrder.transfer_amount_vnd > 0
-            ? selectedHistoryOrder.transfer_amount_vnd
-            : selectedHistoryOrder.total_vnd
+          ? selectedHistoryOrder.payment_method
+          : 'vietqr';
+
+    const terminalIsCashOnly = activePaymentMethod === 'cash';
+
+    const activeCashAmountVnd = savedOrderResult?.order
+      ? savedOrderResult.order.cash_amount_vnd ||
+        (activePaymentMethod === 'cash' ? savedOrderResult.order.total_vnd : 0)
+      : draft
+        ? draft.paymentMethod === 'cash'
+          ? draft.totalVnd
+          : draft.paymentMethod === 'split'
+            ? draft.cashAmountVnd
+            : 0
+        : selectedHistoryOrder
+          ? selectedHistoryOrder.cash_amount_vnd ||
+            (activePaymentMethod === 'cash' ? selectedHistoryOrder.total_vnd : 0)
           : 0;
 
-    const activeTerminalQrUrl = savedOrderResult
-      ? savedOrderResult.vietqrUrl
-      : draft
-        ? draftTransferVnd > 0
-          ? buildVietQRUrl({ amount: draftTransferVnd, addInfo: 'TAM TINH DON MOI' })
-          : null
-        : selectedHistoryOrder
-          ? selectedHistoryOrder.vietqr_url ||
-            (activeTerminalAmountVnd > 0
-              ? buildVietQRUrl({
-                  amount: activeTerminalAmountVnd,
-                  addInfo: selectedHistoryOrder.order_code,
-                })
-              : null)
-          : null;
+    const activeTerminalAmountVnd = terminalIsCashOnly
+      ? 0
+      : savedOrderResult?.order
+        ? savedOrderResult.order.transfer_amount_vnd > 0
+          ? savedOrderResult.order.transfer_amount_vnd
+          : savedOrderResult.order.total_vnd
+        : draft
+          ? draftTransferVnd
+          : selectedHistoryOrder
+            ? selectedHistoryOrder.transfer_amount_vnd > 0
+              ? selectedHistoryOrder.transfer_amount_vnd
+              : selectedHistoryOrder.total_vnd
+            : 0;
 
-    const terminalIsCashOnly = Boolean(draft && !savedOrderResult && draft.paymentMethod === 'cash');
+    const activeTerminalQrUrl = terminalIsCashOnly
+      ? null
+      : savedOrderResult
+        ? savedOrderResult.vietqrUrl
+        : draft
+          ? draftTransferVnd > 0
+            ? buildVietQRUrl({ amount: draftTransferVnd, addInfo: 'TAM TINH DON MOI' })
+            : null
+          : selectedHistoryOrder
+            ? selectedHistoryOrder.vietqr_url ||
+              (activeTerminalAmountVnd > 0
+                ? buildVietQRUrl({
+                    amount: activeTerminalAmountVnd,
+                    addInfo: selectedHistoryOrder.order_code,
+                  })
+                : null)
+            : null;
 
     return (
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
@@ -853,6 +901,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                   type="button"
                   onClick={() => {
                     setDraft(null);
+                    setCashReceivedVnd(0);
                     setSavedOrderResult(null);
                   }}
                   aria-label="Hủy phiếu đang lập"
@@ -1047,12 +1096,31 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                 type="button"
                 onClick={handleSaveOrder}
                 disabled={isSaving}
-                className="min-h-[42px] w-full rounded-lg bg-primary text-primary-foreground hover:bg-[#8B0054] font-semibold text-sm cursor-pointer shadow-xs"
+                className={`min-h-[42px] w-full rounded-lg font-semibold text-sm cursor-pointer shadow-xs ${
+                  draft.paymentMethod === 'cash'
+                    ? 'bg-[#0D7A5F] hover:bg-[#0A644E] text-white'
+                    : 'bg-primary text-primary-foreground hover:bg-[#8B0054]'
+                }`}
               >
                 {isSaving ? (
                   <>
                     <Loader2 className="size-4 animate-spin" aria-hidden="true" />
                     <span>Đang lưu phiếu...</span>
+                  </>
+                ) : draft.paymentMethod === 'cash' ? (
+                  <>
+                    <Banknote className="size-4" aria-hidden="true" />
+                    <span>Thu tiền mặt & Hoàn tất đơn</span>
+                  </>
+                ) : draft.paymentMethod === 'debt' ? (
+                  <>
+                    <BookOpen className="size-4" aria-hidden="true" />
+                    <span>Xác nhận & Ghi sổ công nợ</span>
+                  </>
+                ) : draft.paymentMethod === 'split' ? (
+                  <>
+                    <QrCode className="size-4" aria-hidden="true" />
+                    <span>Xác nhận tách tiền & Xuất VietQR</span>
                   </>
                 ) : (
                   <>
@@ -1064,13 +1132,17 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
             </section>
           )}
 
-          {/* Light Harmonious MoMo Blush Countertop VietQR Terminal */}
+          {/* Method-Aware Countertop Payment Terminal (Cash Checkout vs VietQR vs Split vs Debt) */}
           <section
             aria-labelledby="qr-stand-heading"
             className="surface-blush relative overflow-hidden rounded-xl"
           >
             <div
-              className="h-1 w-full bg-gradient-to-r from-[#A50064] via-[#D82D8B] to-[#F472B6]"
+              className={`h-1 w-full bg-gradient-to-r ${
+                terminalIsCashOnly
+                  ? 'from-[#0F766E] via-[#10B981] to-[#34D399]'
+                  : 'from-[#A50064] via-[#D82D8B] to-[#F472B6]'
+              }`}
               aria-hidden="true"
             />
 
@@ -1078,39 +1150,160 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <h3 id="qr-stand-heading" className="text-[15px] font-semibold tracking-tight text-foreground">
-                    Mã VietQR quầy
+                    {terminalIsCashOnly
+                      ? 'Thu tiền mặt tại quầy'
+                      : activePaymentMethod === 'split'
+                        ? 'Thanh toán tách tiền'
+                        : activePaymentMethod === 'debt'
+                          ? 'Ghi sổ công nợ & Mã nhắc nợ'
+                          : 'Mã VietQR quầy'}
                   </h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {MERCHANT_BANK_ID} • {MERCHANT_ACCOUNT_NO} • {MERCHANT_ACCOUNT_NAME}
+                    {terminalIsCashOnly
+                      ? 'Thanh toán trực tiếp • Không cần quét mã VietQR'
+                      : activePaymentMethod === 'debt'
+                        ? 'Khách có thể quét mã VietQR này để thanh toán sau'
+                        : `${MERCHANT_BANK_ID} • ${MERCHANT_ACCOUNT_NO} • ${MERCHANT_ACCOUNT_NAME}`}
                   </p>
                 </div>
                 {activeTerminalOrder && (
                   <button
                     type="button"
                     onClick={() => void handleCopyCode(activeTerminalOrder.order_code)}
-                    className="min-h-[30px] rounded-lg border border-[#EAB8D2] bg-white px-2.5 py-1 inline-flex items-center gap-1.5 font-mono text-xs font-semibold text-[#A50064] hover:bg-[#FDF2F8] transition-colors cursor-pointer"
+                    className={`min-h-[30px] rounded-lg border bg-white px-2.5 py-1 inline-flex items-center gap-1.5 font-mono text-xs font-semibold transition-colors cursor-pointer ${
+                      terminalIsCashOnly
+                        ? 'border-[#A7F3D0] text-[#065F46] hover:bg-[#ECFDF5]'
+                        : 'border-[#EAB8D2] text-[#A50064] hover:bg-[#FDF2F8]'
+                    }`}
                   >
                     <span>{activeTerminalOrder.order_code}</span>
-                    {copiedCode ? <Check className="size-3 text-[#0F766E]" /> : <Copy className="size-3 text-[#A50064]/70" />}
+                    {copiedCode ? (
+                      <Check className="size-3 text-[#0F766E]" />
+                    ) : (
+                      <Copy
+                        className={`size-3 ${terminalIsCashOnly ? 'text-[#065F46]/70' : 'text-[#A50064]/70'}`}
+                      />
+                    )}
                   </button>
                 )}
               </div>
 
               {terminalIsCashOnly ? (
-                <div className="rounded-xl border border-[#A7F3D0] bg-[#ECFDF5] px-5 py-7 text-center space-y-2">
-                  <div className="mx-auto size-10 rounded-full bg-white text-[#065F46] border border-[#A7F3D0] flex items-center justify-center">
-                    <Banknote className="size-5" aria-hidden="true" />
+                draft && !savedOrderResult ? (
+                  <div className="space-y-3">
+                    <div className="rounded-xl border border-[#A7F3D0] bg-[#ECFDF5]/85 px-4 py-4 text-center space-y-1.5">
+                      <p className="text-xs font-medium text-[#047857]">Cần thu tiền mặt</p>
+                      <p className="font-sans tabular-nums text-2xl font-bold text-[#065F46]">
+                        {formatVND(activeCashAmountVnd)}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-[#EAE0E7] bg-white p-3.5 space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <label
+                          htmlFor="cash-received-input"
+                          className="text-xs font-semibold text-foreground"
+                        >
+                          Tính tiền thừa (Khách đưa)
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setCashReceivedVnd(activeCashAmountVnd)}
+                          className="rounded-md border border-[#A7F3D0] bg-[#ECFDF5] px-2 py-0.5 text-[11px] font-semibold text-[#065F46] hover:bg-[#D1FAE5] cursor-pointer"
+                        >
+                          Đủ tiền
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {[50000, 100000, 200000, 500000].map((denom) => (
+                          <button
+                            key={denom}
+                            type="button"
+                            onClick={() => setCashReceivedVnd(denom)}
+                            className={`min-h-[32px] rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
+                              cashReceivedVnd === denom
+                                ? 'border-[#0F766E] bg-[#ECFDF5] text-[#065F46]'
+                                : 'border-[#EAE0E7] bg-[#FBF8FA] text-foreground hover:bg-[#FDF2F8] hover:border-[#EAB8D2]'
+                            }`}
+                          >
+                            {denom / 1000}k
+                          </button>
+                        ))}
+                      </div>
+
+                      <Input
+                        id="cash-received-input"
+                        type="number"
+                        min={0}
+                        step={1000}
+                        placeholder="Nhập số tiền khách đưa (VND)"
+                        value={cashReceivedVnd > 0 ? cashReceivedVnd : ''}
+                        onChange={(e) =>
+                          setCashReceivedVnd(Math.max(0, Number(e.target.value) || 0))
+                        }
+                        className="h-9 bg-white border-[#DFD1DB] font-sans tabular-nums text-xs rounded-lg"
+                      />
+
+                      <div className="flex items-center justify-between pt-2 border-t border-[#EAE0E7] text-xs">
+                        <span className="text-muted-foreground">Tiền thối lại</span>
+                        {cashReceivedVnd === 0 ? (
+                          <span className="font-sans tabular-nums text-muted-foreground">
+                            {formatVND(0)}
+                          </span>
+                        ) : cashReceivedVnd >= activeCashAmountVnd ? (
+                          <span className="font-sans tabular-nums text-sm font-bold text-[#0F766E]">
+                            {formatVND(cashReceivedVnd - activeCashAmountVnd)}
+                          </span>
+                        ) : (
+                          <span className="font-sans tabular-nums text-xs font-semibold text-[#B45309]">
+                            Thiếu {formatVND(activeCashAmountVnd - cashReceivedVnd)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <p className="text-sm font-semibold text-[#065F46]">Thu tiền mặt tại quầy</p>
-                  <p className="font-sans tabular-nums text-2xl font-bold text-[#065F46]">
-                    {formatVND(draft?.totalVnd ?? 0)}
-                  </p>
-                  <p className="text-xs text-[#047857]">
-                    Đơn tiền mặt không cần quét mã chuyển khoản.
-                  </p>
-                </div>
+                ) : (
+                  <div className="rounded-xl border border-[#A7F3D0] bg-[#ECFDF5]/90 px-4 py-6 text-center space-y-2">
+                    <div className="mx-auto size-10 rounded-full bg-white text-[#0F766E] border border-[#A7F3D0] flex items-center justify-center">
+                      <CheckCircle2 className="size-5" aria-hidden="true" />
+                    </div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[#047857]">
+                      Đã thu đủ tiền mặt
+                    </p>
+                    <p className="font-sans tabular-nums text-2xl font-bold text-[#065F46]">
+                      {formatVND(activeCashAmountVnd)}
+                    </p>
+                    {activeTerminalOrder && (
+                      <p className="text-xs text-[#047857]">
+                        {cleanCustomerDisplay(activeTerminalOrder.customer_name) ||
+                          cleanCustomerDisplay(activeTerminalOrder.table_or_channel)}
+                      </p>
+                    )}
+                    <p className="text-[11px] text-[#047857]/90 pt-1">
+                      Đã cộng trực tiếp vào doanh thu tiền mặt trong ca.
+                    </p>
+                  </div>
+                )
               ) : activeTerminalQrUrl ? (
                 <div className="flex flex-col items-center space-y-3">
+                  {activePaymentMethod === 'split' && (
+                    <div className="w-full grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-lg border border-[#A7F3D0] bg-[#ECFDF5] px-3 py-2">
+                        <p className="text-[11px] text-[#047857]">Tiền mặt tại quầy</p>
+                        <p className="font-sans tabular-nums font-bold text-[#065F46]">
+                          {formatVND(activeCashAmountVnd)}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-[#EAB8D2] bg-white px-3 py-2">
+                        <p className="text-[11px] text-muted-foreground">Quét VietQR</p>
+                        <p className="font-sans tabular-nums font-bold text-[#A50064]">
+                          {formatVND(activeTerminalAmountVnd)}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="rounded-xl border border-[#EAE0E7] bg-white p-2.5 shadow-xs">
                     <Image
                       src={activeTerminalQrUrl}
@@ -1139,7 +1332,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                       </p>
                     </div>
 
-                    {activeTerminalOrder && (
+                    {activeTerminalOrder && activePaymentMethod !== 'debt' && (
                       <Button
                         type="button"
                         onClick={() => onProceedToReceiptVerify(activeTerminalOrder)}
@@ -1178,12 +1371,21 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                   Boolean(displayCustomer) &&
                   displayCustomer.trim().toLowerCase() !== displayChannel.trim().toLowerCase();
                 const isSelected = activeTerminalOrder?.id === order.id && !draft;
+                const methodLabel =
+                  order.payment_method === 'cash'
+                    ? 'Tiền mặt'
+                    : order.payment_method === 'split'
+                      ? 'Tách tiền'
+                      : order.payment_method === 'debt'
+                        ? 'Ghi sổ'
+                        : 'VietQR';
 
                 return (
                   <div
                     key={order.id}
                     onClick={() => {
                       setDraft(null);
+                      setCashReceivedVnd(0);
                       setSavedOrderResult(null);
                       setInspectedOrderId(order.id);
                     }}
@@ -1193,6 +1395,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
                         setDraft(null);
+                        setCashReceivedVnd(0);
                         setSavedOrderResult(null);
                         setInspectedOrderId(order.id);
                       }
@@ -1213,6 +1416,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                       <p className="text-[11px] text-muted-foreground truncate mt-0.5">
                         {displayChannel}
                         {showCustomerSuffix ? ` • ${displayCustomer}` : ''}
+                        {` • ${methodLabel}`}
                       </p>
                     </div>
 
@@ -1220,7 +1424,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                       <span className="font-sans tabular-nums text-xs font-bold text-foreground">
                         {formatVND(order.total_vnd)}
                       </span>
-                      {order.status === 'pending_payment' && (
+                      {order.status === 'pending_payment' && order.payment_method !== 'cash' && (
                         <button
                           type="button"
                           onClick={(e) => {
