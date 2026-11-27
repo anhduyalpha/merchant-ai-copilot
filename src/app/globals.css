@@ -18,11 +18,6 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -43,77 +38,37 @@
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) * 1.35);
-  --radius-2xl: calc(var(--radius) * 1.7);
-  --radius-3xl: calc(var(--radius) * 2.1);
-  --radius-4xl: calc(var(--radius) * 2.5);
+  --radius-2xl: calc(var(--radius) * 1.75);
 }
 
 :root {
-  --background: #faf9f6;
-  --foreground: #181512;
-  --card: #ffffff;
-  --card-foreground: #181512;
-  --popover: #ffffff;
-  --popover-foreground: #181512;
+  --background: #f4f3f8;
+  --foreground: #18151f;
+  --card: rgba(255, 255, 255, 0.74);
+  --card-foreground: #18151f;
+  --popover: rgba(255, 255, 255, 0.92);
+  --popover-foreground: #18151f;
   --primary: #a50064;
   --primary-foreground: #ffffff;
-  --secondary: #f4f2ec;
-  --secondary-foreground: #292524;
-  --muted: #f3f1ec;
-  --muted-foreground: #666057;
-  --accent: #f4f2ec;
-  --accent-foreground: #181512;
+  --secondary: rgba(255, 255, 255, 0.62);
+  --secondary-foreground: #272230;
+  --muted: rgba(24, 21, 31, 0.055);
+  --muted-foreground: #5b5568;
+  --accent: rgba(165, 0, 100, 0.08);
+  --accent-foreground: #18151f;
   --destructive: #be123c;
-  --border: rgba(24, 21, 18, 0.09);
-  --input: rgba(24, 21, 18, 0.14);
+  --border: rgba(24, 21, 31, 0.09);
+  --input: rgba(24, 21, 31, 0.13);
   --ring: #a50064;
-  --chart-1: #a50064;
-  --chart-2: #0f766e;
-  --chart-3: #b45309;
-  --chart-4: #be123c;
-  --chart-5: #57534e;
-  --radius: 0.625rem;
-  --sidebar: #f5f4f0;
-  --sidebar-foreground: #181512;
+  --radius: 0.75rem;
+  --sidebar: rgba(255, 255, 255, 0.78);
+  --sidebar-foreground: #18151f;
   --sidebar-primary: #a50064;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #ece9e1;
-  --sidebar-accent-foreground: #181512;
-  --sidebar-border: rgba(24, 21, 18, 0.09);
+  --sidebar-accent: rgba(165, 0, 100, 0.08);
+  --sidebar-accent-foreground: #18151f;
+  --sidebar-border: rgba(24, 21, 31, 0.08);
   --sidebar-ring: #a50064;
-
-  /* Semantic Fintech POS Tokens */
-  --surface-subtle: #f5f4f0;
-  --status-verified: #0f766e;
-  --status-verified-bg: #f0fdfa;
-  --status-verified-border: rgba(15, 118, 110, 0.22);
-  --status-caution: #b45309;
-  --status-caution-bg: #fffbeb;
-  --status-caution-border: rgba(180, 83, 9, 0.24);
-  --status-danger: #be123c;
-  --status-danger-bg: #fff1f2;
-  --status-danger-border: rgba(190, 18, 60, 0.24);
-}
-
-.dark {
-  --background: #141210;
-  --foreground: #f5f4f0;
-  --card: #1c1917;
-  --card-foreground: #f5f4f0;
-  --popover: #1c1917;
-  --popover-foreground: #f5f4f0;
-  --primary: #d82d8b;
-  --primary-foreground: #ffffff;
-  --secondary: #26221f;
-  --secondary-foreground: #f5f4f0;
-  --muted: #26221f;
-  --muted-foreground: #a8a29e;
-  --accent: #26221f;
-  --accent-foreground: #f5f4f0;
-  --destructive: #f43f5e;
-  --border: rgba(255, 255, 255, 0.1);
-  --input: rgba(255, 255, 255, 0.14);
-  --ring: #d82d8b;
 }
 
 @layer base {
@@ -125,7 +80,7 @@
     @apply font-sans;
     scroll-padding-top: 4.5rem;
     scrollbar-width: thin;
-    scrollbar-color: rgba(24, 21, 18, 0.18) transparent;
+    scrollbar-color: rgba(24, 21, 31, 0.16) transparent;
   }
 
   body {
@@ -135,29 +90,64 @@
   }
 
   ::selection {
-    background-color: rgba(165, 0, 100, 0.14);
-    color: #181512;
+    background-color: rgba(165, 0, 100, 0.15);
+    color: #18151f;
   }
 
   input,
   textarea {
     caret-color: #a50064;
   }
-
-  a,
-  button {
-    text-underline-offset: 3px;
-  }
 }
 
-.surface-card {
-  background-color: var(--card);
-  border: 1px solid var(--border);
-  box-shadow: 0 1px 2px rgba(24, 21, 18, 0.04), 0 1px 1px rgba(24, 21, 18, 0.02);
+.glass-panel {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  box-shadow:
+    0 8px 32px rgba(24, 20, 38, 0.06),
+    0 0 0 1px rgba(24, 21, 31, 0.03),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.glass-elevated {
+  background: rgba(255, 255, 255, 0.84);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(255, 255, 255, 0.94);
+  box-shadow:
+    0 16px 48px rgba(24, 20, 38, 0.09),
+    0 0 0 1px rgba(24, 21, 31, 0.035),
+    inset 0 1px 0 rgba(255, 255, 255, 0.98);
+}
+
+.glass-dark {
+  background: rgba(22, 19, 29, 0.91);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow:
+    0 24px 56px rgba(22, 19, 29, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .tabular-nums {
   font-variant-numeric: tabular-nums;
+}
+
+@keyframes scan-sweep {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(420%);
+  }
+}
+
+.animate-scan-sweep {
+  animation: scan-sweep 1.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

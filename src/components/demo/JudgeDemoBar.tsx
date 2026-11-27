@@ -1,6 +1,18 @@
 'use client';
 
-import { RotateCcw, X } from 'lucide-react';
+import { useEffect } from 'react';
+import {
+  ArrowUpRight,
+  FileImage,
+  MessageSquareText,
+  RotateCcw,
+  ShieldAlert,
+  ShieldCheck,
+  ShieldX,
+  TrendingUp,
+  X,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 export type JudgePresetId =
   | 'slang_chat'
@@ -19,17 +31,62 @@ interface JudgeDemoBarProps {
   activePreset: JudgePresetId | null;
 }
 
-const DEMO_SCENARIOS: ReadonlyArray<{
+const SIMULATOR_SCENARIOS: ReadonlyArray<{
   id: JudgePresetId;
-  label: string;
+  title: string;
+  subtitle: string;
+  screenHint: string;
   dotClass: string;
+  icon: typeof MessageSquareText;
 }> = [
-  { id: 'slang_chat', label: 'Tin nhắn đặt bàn 3', dotClass: 'bg-[#181512]/45' },
-  { id: 'handwritten_order', label: 'Giấy ghi tay', dotClass: 'bg-[#181512]/45' },
-  { id: 'valid_receipt', label: 'Bill hợp lệ', dotClass: 'bg-[#0F766E]' },
-  { id: 'tampered_receipt', label: 'Bill nghi sửa tiền', dotClass: 'bg-[#BE123C]' },
-  { id: 'reused_receipt', label: 'Bill trùng mã GD', dotClass: 'bg-[#BE123C]' },
-  { id: 'copilot_revenue_debt', label: 'Tổng kết & nhắc nợ', dotClass: 'bg-[#B45309]' },
+  {
+    id: 'slang_chat',
+    title: 'Tin nhắn đặt bàn 3',
+    subtitle: '2 bx ít ngọt, 1 cf sữa, giảm 10k, tách 1 trà đào tiền mặt',
+    screenHint: 'Quầy thu ngân',
+    dotClass: 'bg-[#A50064]',
+    icon: MessageSquareText,
+  },
+  {
+    id: 'handwritten_order',
+    title: 'Giấy ghi tay Bàn 2',
+    subtitle: 'Đọc ảnh giấy order viết tay sang phiếu tính tiền & VietQR',
+    screenHint: 'Quầy thu ngân',
+    dotClass: 'bg-[#A50064]',
+    icon: FileImage,
+  },
+  {
+    id: 'valid_receipt',
+    title: 'Bill chuyển khoản hợp lệ',
+    subtitle: 'Khớp 64.000 ₫, mã giao dịch mới, sẵn sàng duyệt 1 chạm',
+    screenHint: 'Kiểm duyệt CK',
+    dotClass: 'bg-[#0F766E]',
+    icon: ShieldCheck,
+  },
+  {
+    id: 'tampered_receipt',
+    title: 'Bill nghi sửa số tiền',
+    subtitle: 'Chữ số bị can thiệp 6.400 ₫ thành 64.000 ₫ trên biên lai',
+    screenHint: 'Kiểm duyệt CK',
+    dotClass: 'bg-[#BE123C]',
+    icon: ShieldAlert,
+  },
+  {
+    id: 'reused_receipt',
+    title: 'Bill trùng mã FT26330998811',
+    subtitle: 'Phát hiện biên lai cũ của đơn DH1001 được gửi lại',
+    screenHint: 'Kiểm duyệt CK',
+    dotClass: 'bg-[#BE123C]',
+    icon: ShieldX,
+  },
+  {
+    id: 'copilot_revenue_debt',
+    title: 'Tổng kết ca & nhắc nợ',
+    subtitle: 'Phân tích doanh thu, món bán chậm & soạn tin Zalo kèm QR',
+    screenHint: 'Doanh thu & Sổ nợ',
+    dotClass: 'bg-[#B45309]',
+    icon: TrendingUp,
+  },
 ];
 
 export function JudgeDemoBar({
@@ -40,98 +97,117 @@ export function JudgeDemoBar({
   isResetting,
   activePreset,
 }: JudgeDemoBarProps) {
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (
-    <section
-      aria-label="Kịch bản dùng thử"
-      className="border-b border-border bg-[#F5F4F0]/90"
+    <div
+      className="fixed inset-0 z-50 flex justify-end"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Bộ mô phỏng nhanh"
     >
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 min-h-[44px] py-2 md:py-1.5 flex flex-col md:flex-row md:items-center gap-2 md:gap-3">
-        <div className="flex items-center justify-between md:justify-start gap-2 shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-foreground whitespace-nowrap">
-              Kịch bản dùng thử
-            </span>
-            <span className="inline-flex md:hidden xl:inline-flex items-center rounded-md border border-border bg-white px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground whitespace-nowrap">
-              Dữ liệu mẫu
-            </span>
+      {/* Frosted backdrop */}
+      <div
+        className="fixed inset-0 bg-[#18151F]/25 backdrop-blur-xs transition-opacity"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {/* Slide-over drawer */}
+      <aside className="relative z-10 flex h-full w-full max-w-[390px] flex-col glass-elevated border-l border-white/80">
+        <div className="flex items-center justify-between gap-3 border-b border-border/80 px-5 py-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-semibold tracking-tight text-foreground">
+                Bộ mô phỏng nhanh
+              </h2>
+              <kbd className="rounded border border-border bg-white/80 px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground">
+                Alt+D
+              </kbd>
+            </div>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Chọn 1 chạm để chạy trực tiếp các tình huống bán hàng và kiểm soát giao dịch.
+            </p>
           </div>
 
-          {/* Mobile compact actions row */}
-          <div className="flex md:hidden items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => void onResetDemo()}
-              disabled={isResetting}
-              className="min-h-[32px] px-2.5 py-1 rounded-md border border-border bg-white text-xs font-medium text-foreground hover:bg-[#FAF9F6] disabled:opacity-50 whitespace-nowrap inline-flex items-center gap-1.5 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            >
-              <RotateCcw
-                className={`size-3.5 text-muted-foreground ${isResetting ? 'animate-spin' : ''}`}
-                aria-hidden="true"
-              />
-              <span>{isResetting ? 'Đang khôi phục...' : 'Khôi phục'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Ẩn thanh kịch bản dùng thử"
-              className="size-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/80 inline-flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            >
-              <X className="size-3.5" aria-hidden="true" />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Đóng bộ mô phỏng"
+            className="size-9 shrink-0 rounded-lg border border-border bg-white/75 text-muted-foreground hover:text-foreground hover:bg-white inline-flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <X className="size-4" aria-hidden="true" />
+          </button>
         </div>
 
-        <div className="hidden md:block h-4 w-px bg-border shrink-0" aria-hidden="true" />
-
-        <div className="flex items-center gap-1.5 w-full md:flex-1 min-w-0 overflow-x-auto pb-0.5 md:py-0.5">
-          {DEMO_SCENARIOS.map((item) => {
+        <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
+          {SIMULATOR_SCENARIOS.map((item) => {
+            const Icon = item.icon;
             const isSelected = activePreset === item.id;
             return (
               <button
                 key={item.id}
                 type="button"
-                onClick={() => onSelectPreset(item.id)}
-                className={`min-h-[34px] md:min-h-[32px] px-2.5 py-1 rounded-md border text-xs font-medium whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                onClick={() => {
+                  onSelectPreset(item.id);
+                  onClose();
+                }}
+                className={`w-full rounded-xl border p-3.5 text-left transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                   isSelected
-                    ? 'border-primary bg-white text-primary shadow-2xs'
-                    : 'border-border bg-white/85 text-foreground hover:bg-white hover:border-foreground/20'
+                    ? 'border-primary/40 bg-white shadow-sm ring-1 ring-primary/20'
+                    : 'border-white/90 bg-white/70 hover:bg-white hover:border-border'
                 }`}
               >
-                <span
-                  className={`size-1.5 rounded-full shrink-0 ${item.dotClass}`}
-                  aria-hidden="true"
-                />
-                <span>{item.label}</span>
+                <div className="flex items-start justify-between gap-2.5">
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#18151F]/5 text-foreground">
+                      <Icon className="size-4" aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className={`size-1.5 rounded-full shrink-0 ${item.dotClass}`} aria-hidden="true" />
+                        <span className="text-sm font-semibold text-foreground">{item.title}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                        {item.subtitle}
+                      </p>
+                      <span className="mt-2 inline-block rounded-md bg-black/[0.04] px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                        {item.screenHint}
+                      </span>
+                    </div>
+                  </div>
+                  <ArrowUpRight className="size-4 shrink-0 text-muted-foreground mt-0.5" aria-hidden="true" />
+                </div>
               </button>
             );
           })}
         </div>
 
-        <div className="hidden md:flex items-center gap-1.5 shrink-0 pl-1.5 border-l border-border/70">
-          <button
+        <div className="border-t border-border/80 p-4 bg-white/60">
+          <Button
             type="button"
-            onClick={() => void onResetDemo()}
+            variant="outline"
             disabled={isResetting}
-            className="min-h-[32px] px-2.5 py-1 rounded-md border border-border bg-white text-xs font-medium text-foreground hover:bg-[#FAF9F6] disabled:opacity-50 whitespace-nowrap inline-flex items-center gap-1.5 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            onClick={() => void onResetDemo()}
+            className="min-h-[44px] w-full rounded-xl border-border bg-white text-foreground hover:bg-white/90 font-medium cursor-pointer"
           >
             <RotateCcw
-              className={`size-3.5 text-muted-foreground ${isResetting ? 'animate-spin' : ''}`}
+              className={`size-4 text-muted-foreground ${isResetting ? 'animate-spin' : ''}`}
               aria-hidden="true"
             />
-            <span>{isResetting ? 'Đang khôi phục...' : 'Khôi phục'}</span>
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Ẩn thanh kịch bản dùng thử"
-            className="size-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-white/80 inline-flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            <X className="size-3.5" aria-hidden="true" />
-          </button>
+            <span>{isResetting ? 'Đang khôi phục...' : 'Khôi phục dữ liệu gốc'}</span>
+          </Button>
         </div>
-      </div>
-    </section>
+      </aside>
+    </div>
   );
 }
