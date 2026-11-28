@@ -68,7 +68,6 @@ interface ReceiptFraudInspectorProps {
   selectedOrderId: string | null;
   onSelectOrderId: (id: string) => void;
   onVerificationUpdated: () => Promise<void>;
-  onOpenSimulator: () => void;
   onInspectOrderDetail: (orderId: string) => void;
 }
 
@@ -151,7 +150,6 @@ export const ReceiptFraudInspector = forwardRef<
     selectedOrderId,
     onSelectOrderId,
     onVerificationUpdated,
-    onOpenSimulator,
     onInspectOrderDetail,
   },
   ref
@@ -213,7 +211,7 @@ export const ReceiptFraudInspector = forwardRef<
               ? targetOrder.transfer_amount_vnd > 0
                 ? targetOrder.transfer_amount_vnd
                 : targetOrder.total_vnd
-              : 64000),
+              : undefined),
           imageBase64: img?.imageBase64,
           imageMimeType: img?.imageMimeType,
           imageUrl: img?.imageUrl,
@@ -423,23 +421,27 @@ export const ReceiptFraudInspector = forwardRef<
               onChange={(e) => onSelectOrderId(e.target.value)}
               className="mt-1.5 h-10 w-full rounded-lg border border-[#DFD1DB] bg-white px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
-              {orders.map((o) => {
-                const expected = o.transfer_amount_vnd > 0 ? o.transfer_amount_vnd : o.total_vnd;
-                const customer = cleanCustomerDisplay(o.customer_name) || cleanCustomerDisplay(o.table_or_channel);
-                const statusLabel =
-                  o.status === 'paid'
-                    ? 'Đã thu'
-                    : o.status === 'debt'
-                      ? 'Ghi sổ'
-                      : o.status === 'cancelled'
-                        ? 'Đã hủy'
-                        : 'Chờ thu';
-                return (
-                  <option key={o.id} value={o.id}>
-                    {o.order_code} • {formatVND(expected)} • {customer} ({statusLabel})
-                  </option>
-                );
-              })}
+              {orders.length === 0 ? (
+                <option value="">Chưa có đơn chờ thu — kiểm tra biên lai độc lập</option>
+              ) : (
+                orders.map((o) => {
+                  const expected = o.transfer_amount_vnd > 0 ? o.transfer_amount_vnd : o.total_vnd;
+                  const customer = cleanCustomerDisplay(o.customer_name) || cleanCustomerDisplay(o.table_or_channel);
+                  const statusLabel =
+                    o.status === 'paid'
+                      ? 'Đã thu'
+                      : o.status === 'debt'
+                        ? 'Ghi sổ'
+                        : o.status === 'cancelled'
+                          ? 'Đã hủy'
+                          : 'Chờ thu';
+                  return (
+                    <option key={o.id} value={o.id}>
+                      {o.order_code} • {formatVND(expected)} • {customer} ({statusLabel})
+                    </option>
+                  );
+                })
+              )}
             </select>
           </div>
 
@@ -500,14 +502,6 @@ export const ReceiptFraudInspector = forwardRef<
                     >
                       chọn tệp từ máy
                     </button>
-                    {' • '}
-                    <button
-                      type="button"
-                      onClick={onOpenSimulator}
-                      className="font-medium text-muted-foreground hover:text-foreground underline cursor-pointer"
-                    >
-                      Thử với biên lai mẫu
-                    </button>
                   </p>
                 </div>
               </div>
@@ -559,72 +553,78 @@ export const ReceiptFraudInspector = forwardRef<
           </div>
 
           <div className="divide-y divide-[#F0E7ED] max-h-64 overflow-y-auto pr-1">
-            {paymentReceipts.slice(0, 8).map((r) => {
-              const isApproved = r.verdict === 'approved';
-              const isRejected = r.verdict === 'rejected';
-              const isWarning = !isApproved && !isRejected && (r.risk_level === 'high' || r.risk_level === 'medium');
-              const isSelected = displayedDossier?.receipt?.id === r.id;
+            {paymentReceipts.length === 0 ? (
+              <p className="py-6 text-center text-xs text-muted-foreground">
+                Chưa phát sinh giao dịch chuyển khoản nào.
+              </p>
+            ) : (
+              paymentReceipts.slice(0, 8).map((r) => {
+                const isApproved = r.verdict === 'approved';
+                const isRejected = r.verdict === 'rejected';
+                const isWarning = !isApproved && !isRejected && (r.risk_level === 'high' || r.risk_level === 'medium');
+                const isSelected = displayedDossier?.receipt?.id === r.id;
 
-              const statusColor = isApproved
-                ? 'text-[#0F766E]'
-                : isRejected
-                  ? 'text-[#BE123C]'
-                  : isWarning
-                    ? 'text-[#B45309]'
-                    : 'text-muted-foreground';
-              const dotColor = isApproved
-                ? 'bg-[#0F766E]'
-                : isRejected
-                  ? 'bg-[#BE123C]'
-                  : isWarning
-                    ? 'bg-[#B45309]'
-                    : 'bg-[#968491]';
-              const statusText = isApproved
-                ? 'Đã nhận'
-                : isRejected
-                  ? 'Từ chối'
-                  : isWarning
-                    ? 'Cảnh báo'
-                    : 'Chờ duyệt';
+                const statusColor = isApproved
+                  ? 'text-[#0F766E]'
+                  : isRejected
+                    ? 'text-[#BE123C]'
+                    : isWarning
+                      ? 'text-[#B45309]'
+                      : 'text-muted-foreground';
+                const dotColor = isApproved
+                  ? 'bg-[#0F766E]'
+                  : isRejected
+                    ? 'bg-[#BE123C]'
+                    : isWarning
+                      ? 'bg-[#B45309]'
+                      : 'bg-[#968491]';
+                const statusText = isApproved
+                  ? 'Đã nhận'
+                  : isRejected
+                    ? 'Từ chối'
+                    : isWarning
+                      ? 'Cảnh báo'
+                      : 'Chờ duyệt';
 
-              return (
-                <div
-                  key={r.id}
-                  className={`w-full py-2.5 px-2.5 rounded-lg flex items-center justify-between gap-2 text-xs transition-colors ${
-                    isSelected
-                      ? 'bg-[#FDF2F8] border border-[#F3D0E2]'
-                      : 'hover:bg-[#FBF8FA] border border-transparent'
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setInspectedHistoryId(r.id)}
-                    className="min-w-0 flex-1 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+                return (
+                  <div
+                    key={r.id}
+                    className={`w-full py-2.5 px-2.5 rounded-lg flex items-center justify-between gap-2 text-xs transition-colors ${
+                      isSelected
+                        ? 'bg-[#FDF2F8] border border-[#F3D0E2]'
+                        : 'hover:bg-[#FBF8FA] border border-transparent'
+                    }`}
                   >
-                    <span className="font-mono font-semibold text-foreground">{r.transaction_ref}</span>
-                    <span className="text-muted-foreground"> • {cleanBankDisplay(r.bank_name)}</span>
-                  </button>
-                  <div className="flex items-center gap-2.5 shrink-0">
-                    {r.order_id && (
-                      <button
-                        type="button"
-                        onClick={() => onInspectOrderDetail(r.order_id as string)}
-                        className="rounded border border-[#EAE0E7] bg-white px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground hover:text-[#A50064] hover:border-[#EAB8D2] cursor-pointer"
-                      >
-                        Xem đơn
-                      </button>
-                    )}
-                    <span className="font-sans tabular-nums font-semibold text-foreground">
-                      {formatVND(r.extracted_amount_vnd)}
-                    </span>
-                    <span className={`inline-flex items-center gap-1.5 font-medium ${statusColor}`}>
-                      <span className={`size-1.5 rounded-full ${dotColor}`} aria-hidden="true" />
-                      {statusText}
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setInspectedHistoryId(r.id)}
+                      className="min-w-0 flex-1 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+                    >
+                      <span className="font-mono font-semibold text-foreground">{r.transaction_ref}</span>
+                      <span className="text-muted-foreground"> • {cleanBankDisplay(r.bank_name)}</span>
+                    </button>
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      {r.order_id && (
+                        <button
+                          type="button"
+                          onClick={() => onInspectOrderDetail(r.order_id as string)}
+                          className="rounded border border-[#EAE0E7] bg-white px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground hover:text-[#A50064] hover:border-[#EAB8D2] cursor-pointer"
+                        >
+                          Xem đơn
+                        </button>
+                      )}
+                      <span className="font-sans tabular-nums font-semibold text-foreground">
+                        {formatVND(r.extracted_amount_vnd)}
+                      </span>
+                      <span className={`inline-flex items-center gap-1.5 font-medium ${statusColor}`}>
+                        <span className={`size-1.5 rounded-full ${dotColor}`} aria-hidden="true" />
+                        {statusText}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </section>
       </div>
@@ -824,6 +824,20 @@ export const ReceiptFraudInspector = forwardRef<
                 </div>
               )}
             </div>
+          </section>
+        )}
+
+        {!isVerifying && !displayedDossier && (
+          <section className="surface-card rounded-xl p-8 text-center space-y-2.5 flex flex-col items-center justify-center flex-1 min-h-[340px]">
+            <div className="size-11 rounded-xl bg-[#FDF2F8] border border-[#F3D0E2] flex items-center justify-center text-primary">
+              <ShieldCheck className="size-5" aria-hidden="true" />
+            </div>
+            <h3 className="text-sm font-semibold text-foreground">
+              Sẵn sàng đối soát biên lai chuyển khoản
+            </h3>
+            <p className="max-w-sm text-xs text-muted-foreground leading-relaxed">
+              Tải lên hoặc dán ảnh màn hình chuyển khoản ở khung bên trái để AI trích xuất mã giao dịch, kiểm tra 4 lớp và đối chiếu trùng lặp tự động.
+            </p>
           </section>
         )}
       </div>

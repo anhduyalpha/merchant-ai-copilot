@@ -29,6 +29,7 @@ import {
   Minus,
   Plus,
   QrCode,
+  ReceiptText,
   Search,
   ShieldCheck,
   Trash2,
@@ -142,7 +143,6 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
       order: OrderRow;
       vietqrUrl: string | null;
     } | null>(null);
-    const [inspectedOrderId, setInspectedOrderId] = useState<string | null>(null);
     const [cashReceivedVnd, setCashReceivedVnd] = useState<number>(0);
     const [copiedCode, setCopiedCode] = useState(false);
 
@@ -300,7 +300,6 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
         setReasoningVi('');
         setWarningsVi([]);
         setSavedOrderResult(null);
-        setInspectedOrderId(null);
         setMenuCategory('all');
         setMenuQuery('');
       },
@@ -563,7 +562,6 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
           order: savedOrder,
           vietqrUrl: (data.vietqrUrl as string | null) ?? null,
         });
-        setInspectedOrderId(savedOrder.id);
 
         if (savedOrder.payment_method === 'cash') {
           toast.success(
@@ -693,65 +691,32 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
       });
     }, [menuItems, menuCategory, menuQuery]);
 
-    // Determine which order / draft feeds the right-hand Payment Terminal
-    const selectedHistoryOrder =
-      orders.find((o) => o.id === inspectedOrderId) ??
-      orders.find((o) => o.status === 'pending_payment' && o.payment_method !== 'cash') ??
-      orders[0] ??
-      null;
-
-    const draftTransferVnd = draft
-      ? draft.paymentMethod === 'cash'
-        ? 0
-        : draft.paymentMethod === 'split'
-          ? draft.transferAmountVnd
-          : draft.totalVnd
+    // VietQR / Confirmation card only appears strictly AFTER an order is created (`savedOrderResult && !draft`)
+    const confirmedOrder = !draft ? savedOrderResult?.order ?? null : null;
+    const confirmedPaymentMethod: PaymentMethod | null = confirmedOrder
+      ? confirmedOrder.payment_method
+      : null;
+    const confirmedIsCashOnly = Boolean(
+      confirmedOrder &&
+        (confirmedOrder.payment_method === 'cash' ||
+          (confirmedOrder.payment_method === 'split' && confirmedOrder.transfer_amount_vnd <= 0))
+    );
+    const confirmedCashAmountVnd = confirmedOrder
+      ? confirmedOrder.cash_amount_vnd ||
+        (confirmedOrder.payment_method === 'cash' ? confirmedOrder.total_vnd : 0)
       : 0;
-
-    const activeTerminalOrder = savedOrderResult?.order ?? (draft ? null : selectedHistoryOrder);
-    const activePaymentMethod: PaymentMethod = savedOrderResult?.order
-      ? savedOrderResult.order.payment_method
-      : draft
-        ? draft.paymentMethod
-        : selectedHistoryOrder
-          ? selectedHistoryOrder.payment_method
-          : 'vietqr';
-
-    const terminalIsCashOnly = activePaymentMethod === 'cash';
-
-    const activeCashAmountVnd = savedOrderResult?.order
-      ? savedOrderResult.order.cash_amount_vnd ||
-        (activePaymentMethod === 'cash' ? savedOrderResult.order.total_vnd : 0)
-      : draft
-        ? draft.paymentMethod === 'cash'
-          ? draft.totalVnd
-          : draft.paymentMethod === 'split'
-            ? draft.cashAmountVnd
-            : 0
-        : selectedHistoryOrder
-          ? selectedHistoryOrder.cash_amount_vnd ||
-            (activePaymentMethod === 'cash' ? selectedHistoryOrder.total_vnd : 0)
-          : 0;
-
-    const activeTerminalAmountVnd = terminalIsCashOnly
-      ? 0
-      : savedOrderResult?.order
-        ? savedOrderResult.order.transfer_amount_vnd > 0
-          ? savedOrderResult.order.transfer_amount_vnd
-          : savedOrderResult.order.total_vnd
-        : draft
-          ? draftTransferVnd
-          : selectedHistoryOrder
-            ? selectedHistoryOrder.transfer_amount_vnd > 0
-              ? selectedHistoryOrder.transfer_amount_vnd
-              : selectedHistoryOrder.total_vnd
-            : 0;
-
-    const activeTerminalHasLocalQr =
-      !terminalIsCashOnly &&
-      activePaymentMethod !== 'debt' &&
-      activeTerminalAmountVnd > 0 &&
-      Boolean(savedOrderResult?.order || draft || selectedHistoryOrder);
+    const confirmedTransferAmountVnd =
+      confirmedOrder && !confirmedIsCashOnly
+        ? confirmedOrder.transfer_amount_vnd > 0
+          ? confirmedOrder.transfer_amount_vnd
+          : confirmedOrder.total_vnd
+        : 0;
+    const confirmedHasLocalQr = Boolean(
+      confirmedOrder &&
+        !confirmedIsCashOnly &&
+        confirmedOrder.payment_method !== 'debt' &&
+        confirmedTransferAmountVnd > 0
+    );
 
     const isLargeOrder = Boolean(
       draft && (draft.items.some((i) => i.quantity >= 50) || draft.totalVnd >= 5_000_000)
@@ -1306,6 +1271,73 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                 )}
               </div>
 
+              {draft.paymentMethod === 'cash' && (
+                <div className="rounded-xl border border-[#A7F3D0] bg-[#ECFDF5]/60 p-3 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <label
+                      htmlFor="cash-received-input"
+                      className="text-xs font-semibold text-[#065F46]"
+                    >
+                      Tính tiền thừa (Khách đưa)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setCashReceivedVnd(draft.totalVnd)}
+                      className="rounded-md border border-[#A7F3D0] bg-white px-2 py-0.5 text-[11px] font-semibold text-[#065F46] hover:bg-[#D1FAE5] cursor-pointer"
+                    >
+                      Đủ tiền
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {[50000, 100000, 200000, 500000].map((denom) => (
+                      <button
+                        key={denom}
+                        type="button"
+                        onClick={() => setCashReceivedVnd(denom)}
+                        className={`min-h-[32px] rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
+                          cashReceivedVnd === denom
+                            ? 'border-[#0F766E] bg-[#D1FAE5] text-[#065F46]'
+                            : 'border-[#EAE0E7] bg-white text-foreground hover:bg-[#FDF2F8] hover:border-[#EAB8D2]'
+                        }`}
+                      >
+                        {denom / 1000}k
+                      </button>
+                    ))}
+                  </div>
+
+                  <Input
+                    id="cash-received-input"
+                    type="number"
+                    min={0}
+                    step={1000}
+                    placeholder="Nhập số tiền khách đưa (VND)"
+                    value={cashReceivedVnd > 0 ? cashReceivedVnd : ''}
+                    onChange={(e) =>
+                      setCashReceivedVnd(Math.max(0, Number(e.target.value) || 0))
+                    }
+                    className="h-9 bg-white border-[#DFD1DB] font-sans tabular-nums text-xs rounded-lg"
+                  />
+
+                  <div className="flex items-center justify-between pt-1.5 border-t border-[#A7F3D0]/70 text-xs">
+                    <span className="text-[#047857]">Tiền thối lại</span>
+                    {cashReceivedVnd === 0 ? (
+                      <span className="font-sans tabular-nums text-muted-foreground">
+                        {formatVND(0)}
+                      </span>
+                    ) : cashReceivedVnd >= draft.totalVnd ? (
+                      <span className="font-sans tabular-nums text-sm font-bold text-[#0F766E]">
+                        {formatVND(cashReceivedVnd - draft.totalVnd)}
+                      </span>
+                    ) : (
+                      <span className="font-sans tabular-nums text-xs font-semibold text-[#B45309]">
+                        Thiếu {formatVND(draft.totalVnd - cashReceivedVnd)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {isLargeOrder && (
                 <div className="rounded-lg border border-[#F59E0B] bg-[#FFFBEB] p-3 space-y-2 text-xs text-[#92400E]">
                   <div className="flex items-start gap-2 font-semibold">
@@ -1366,138 +1398,75 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
             </section>
           )}
 
-          {/* Method-Aware Countertop Payment Terminal (Cash Checkout vs VietQR vs Split vs Debt) */}
-          <section
-            aria-labelledby="qr-stand-heading"
-            className="surface-blush relative overflow-hidden rounded-xl"
-          >
-            <div
-              className={`h-1 w-full bg-gradient-to-r ${
-                terminalIsCashOnly
-                  ? 'from-[#0F766E] via-[#10B981] to-[#34D399]'
-                  : 'from-[#A50064] via-[#D82D8B] to-[#F472B6]'
-              }`}
-              aria-hidden="true"
-            />
+          {/* Empty Draft Card when idle and no confirmed order is showing */}
+          {!isParsing && !draft && !confirmedOrder && (
+            <section className="surface-card rounded-xl p-6 text-center space-y-2">
+              <div className="mx-auto size-10 rounded-xl bg-[#FDF2F8] border border-[#F3D0E2] flex items-center justify-center text-primary">
+                <ReceiptText className="size-4" aria-hidden="true" />
+              </div>
+              <h3 className="text-sm font-semibold text-foreground">Phiếu đơn trống</h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Chọn món từ thực đơn bên trái hoặc nhập tin nhắn khách đặt để lập phiếu mới.
+              </p>
+            </section>
+          )}
 
-            <div className="p-4 space-y-3.5">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <h3 id="qr-stand-heading" className="text-[15px] font-semibold tracking-tight text-foreground">
-                    {terminalIsCashOnly
-                      ? 'Thu tiền mặt tại quầy'
-                      : activePaymentMethod === 'split'
-                        ? 'Thanh toán tách tiền'
-                        : activePaymentMethod === 'debt'
-                          ? 'Ghi sổ công nợ & Mã nhắc nợ'
-                          : 'Mã VietQR quầy'}
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {terminalIsCashOnly
-                      ? 'Thanh toán trực tiếp • Không cần quét mã VietQR'
-                      : activePaymentMethod === 'debt'
-                        ? 'Khách có thể quét mã VietQR này để thanh toán sau'
-                        : `${MERCHANT_BANK_ID} • ${MERCHANT_ACCOUNT_NO} • ${MERCHANT_ACCOUNT_NAME}`}
-                  </p>
-                </div>
-                {activeTerminalOrder && (
+          {/* Post-Order Payment Confirmation & VietQR Box (ONLY shown after order creation succeeds) */}
+          {!isParsing && !draft && confirmedOrder && (
+            <section
+              aria-labelledby="qr-stand-heading"
+              className="surface-blush relative overflow-hidden rounded-xl"
+            >
+              <div
+                className={`h-1 w-full bg-gradient-to-r ${
+                  confirmedIsCashOnly
+                    ? 'from-[#0F766E] via-[#10B981] to-[#34D399]'
+                    : 'from-[#A50064] via-[#D82D8B] to-[#F472B6]'
+                }`}
+                aria-hidden="true"
+              />
+
+              <div className="p-4 space-y-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <h3 id="qr-stand-heading" className="text-[15px] font-semibold tracking-tight text-foreground">
+                      {confirmedIsCashOnly
+                        ? 'Thu tiền mặt tại quầy'
+                        : confirmedPaymentMethod === 'split'
+                          ? 'Thanh toán tách tiền'
+                          : confirmedPaymentMethod === 'debt'
+                            ? 'Ghi sổ công nợ & Mã nhắc nợ'
+                            : 'Mã VietQR thanh toán'}
+                    </h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {confirmedIsCashOnly
+                        ? 'Thanh toán trực tiếp • Không cần quét mã VietQR'
+                        : confirmedPaymentMethod === 'debt'
+                          ? 'Khách có thể quét mã VietQR này để thanh toán sau'
+                          : `${MERCHANT_BANK_ID} • ${MERCHANT_ACCOUNT_NO} • ${MERCHANT_ACCOUNT_NAME}`}
+                    </p>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => void handleCopyCode(activeTerminalOrder.order_code)}
+                    onClick={() => void handleCopyCode(confirmedOrder.order_code)}
                     className={`min-h-[30px] rounded-lg border bg-white px-2.5 py-1 inline-flex items-center gap-1.5 font-mono text-xs font-semibold transition-colors cursor-pointer ${
-                      terminalIsCashOnly
+                      confirmedIsCashOnly
                         ? 'border-[#A7F3D0] text-[#065F46] hover:bg-[#ECFDF5]'
                         : 'border-[#EAB8D2] text-[#A50064] hover:bg-[#FDF2F8]'
                     }`}
                   >
-                    <span>{activeTerminalOrder.order_code}</span>
+                    <span>{confirmedOrder.order_code}</span>
                     {copiedCode ? (
                       <Check className="size-3 text-[#0F766E]" />
                     ) : (
                       <Copy
-                        className={`size-3 ${terminalIsCashOnly ? 'text-[#065F46]/70' : 'text-[#A50064]/70'}`}
+                        className={`size-3 ${confirmedIsCashOnly ? 'text-[#065F46]/70' : 'text-[#A50064]/70'}`}
                       />
                     )}
                   </button>
-                )}
-              </div>
+                </div>
 
-              {terminalIsCashOnly ? (
-                draft && !savedOrderResult ? (
-                  <div className="space-y-3">
-                    <div className="rounded-xl border border-[#A7F3D0] bg-[#ECFDF5]/85 px-4 py-4 text-center space-y-1.5">
-                      <p className="text-xs font-medium text-[#047857]">Cần thu tiền mặt</p>
-                      <p className="font-sans tabular-nums text-2xl font-bold text-[#065F46]">
-                        {formatVND(activeCashAmountVnd)}
-                      </p>
-                    </div>
-
-                    <div className="rounded-xl border border-[#EAE0E7] bg-white p-3.5 space-y-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <label
-                          htmlFor="cash-received-input"
-                          className="text-xs font-semibold text-foreground"
-                        >
-                          Tính tiền thừa (Khách đưa)
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => setCashReceivedVnd(activeCashAmountVnd)}
-                          className="rounded-md border border-[#A7F3D0] bg-[#ECFDF5] px-2 py-0.5 text-[11px] font-semibold text-[#065F46] hover:bg-[#D1FAE5] cursor-pointer"
-                        >
-                          Đủ tiền
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-4 gap-1.5">
-                        {[50000, 100000, 200000, 500000].map((denom) => (
-                          <button
-                            key={denom}
-                            type="button"
-                            onClick={() => setCashReceivedVnd(denom)}
-                            className={`min-h-[32px] rounded-lg border text-xs font-semibold transition-colors cursor-pointer ${
-                              cashReceivedVnd === denom
-                                ? 'border-[#0F766E] bg-[#ECFDF5] text-[#065F46]'
-                                : 'border-[#EAE0E7] bg-[#FBF8FA] text-foreground hover:bg-[#FDF2F8] hover:border-[#EAB8D2]'
-                            }`}
-                          >
-                            {denom / 1000}k
-                          </button>
-                        ))}
-                      </div>
-
-                      <Input
-                        id="cash-received-input"
-                        type="number"
-                        min={0}
-                        step={1000}
-                        placeholder="Nhập số tiền khách đưa (VND)"
-                        value={cashReceivedVnd > 0 ? cashReceivedVnd : ''}
-                        onChange={(e) =>
-                          setCashReceivedVnd(Math.max(0, Number(e.target.value) || 0))
-                        }
-                        className="h-9 bg-white border-[#DFD1DB] font-sans tabular-nums text-xs rounded-lg"
-                      />
-
-                      <div className="flex items-center justify-between pt-2 border-t border-[#EAE0E7] text-xs">
-                        <span className="text-muted-foreground">Tiền thối lại</span>
-                        {cashReceivedVnd === 0 ? (
-                          <span className="font-sans tabular-nums text-muted-foreground">
-                            {formatVND(0)}
-                          </span>
-                        ) : cashReceivedVnd >= activeCashAmountVnd ? (
-                          <span className="font-sans tabular-nums text-sm font-bold text-[#0F766E]">
-                            {formatVND(cashReceivedVnd - activeCashAmountVnd)}
-                          </span>
-                        ) : (
-                          <span className="font-sans tabular-nums text-xs font-semibold text-[#B45309]">
-                            Thiếu {formatVND(activeCashAmountVnd - cashReceivedVnd)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
+                {confirmedIsCashOnly ? (
                   <div className="rounded-xl border border-[#A7F3D0] bg-[#ECFDF5]/90 px-4 py-5 text-center space-y-2.5">
                     <div className="mx-auto size-10 rounded-full bg-white text-[#0F766E] border border-[#A7F3D0] flex items-center justify-center">
                       <CheckCircle2 className="size-5" aria-hidden="true" />
@@ -1506,69 +1475,46 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                       Phiếu thu tiền mặt — Đã thanh toán
                     </p>
                     <p className="font-sans tabular-nums text-2xl font-bold text-[#065F46]">
-                      {formatVND(activeCashAmountVnd)}
+                      {formatVND(confirmedCashAmountVnd)}
                     </p>
-                    {activeTerminalOrder && (
-                      <p className="text-xs text-[#047857]">
-                        {cleanCustomerDisplay(activeTerminalOrder.customer_name) ||
-                          cleanCustomerDisplay(activeTerminalOrder.table_or_channel)}
-                      </p>
-                    )}
+                    <p className="text-xs text-[#047857]">
+                      {cleanCustomerDisplay(confirmedOrder.customer_name) ||
+                        cleanCustomerDisplay(confirmedOrder.table_or_channel)}
+                    </p>
                     <div className="flex flex-wrap justify-center gap-2 pt-1">
-                      {activeTerminalOrder && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => onInspectOrderDetail(activeTerminalOrder.id)}
-                          className="min-h-[34px] rounded-lg border-[#A7F3D0] bg-white text-[#065F46] hover:bg-[#ECFDF5] text-xs font-semibold cursor-pointer"
-                        >
-                          <FileText className="size-3.5" aria-hidden="true" />
-                          <span>Xem chi tiết đơn</span>
-                        </Button>
-                      )}
-                      {savedOrderResult && (
-                        <Button
-                          type="button"
-                          onClick={() => setSavedOrderResult(null)}
-                          className="min-h-[34px] rounded-lg bg-[#0D7A5F] hover:bg-[#0A644E] text-white text-xs font-semibold cursor-pointer"
-                        >
-                          Tạo đơn mới
-                        </Button>
-                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => onInspectOrderDetail(confirmedOrder.id)}
+                        className="min-h-[34px] rounded-lg border-[#A7F3D0] bg-white text-[#065F46] hover:bg-[#ECFDF5] text-xs font-semibold cursor-pointer"
+                      >
+                        <FileText className="size-3.5" aria-hidden="true" />
+                        <span>Xem chi tiết đơn</span>
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={() => setSavedOrderResult(null)}
+                        className="min-h-[34px] rounded-lg bg-[#0D7A5F] hover:bg-[#0A644E] text-white text-xs font-semibold cursor-pointer"
+                      >
+                        Tạo đơn mới
+                      </Button>
                     </div>
                   </div>
-                )
-              ) : activePaymentMethod === 'debt' ? (
-                draft && !savedOrderResult ? (
-                  <div className="rounded-xl border border-[#FDE68A] bg-[#FFFBEB] px-4 py-5 text-center space-y-2">
-                    <div className="mx-auto size-10 rounded-full bg-white text-[#B45309] border border-[#FDE68A] flex items-center justify-center">
-                      <BookOpen className="size-5" aria-hidden="true" />
-                    </div>
-                    <p className="text-xs font-semibold text-[#92400E]">Sẵn sàng ghi sổ công nợ</p>
-                    <p className="font-sans tabular-nums text-2xl font-bold text-[#92400E]">
-                      {formatVND(draft.totalVnd)}
-                    </p>
-                    <p className="text-xs text-[#B45309]">
-                      {draft.customerName?.trim()
-                        ? `Khách hàng: ${draft.customerName.trim()}`
-                        : 'Hãy nhập tên khách hàng bên trái trước khi ghi sổ.'}
-                    </p>
-                  </div>
-                ) : activeTerminalOrder ? (
+                ) : confirmedPaymentMethod === 'debt' ? (
                   <div className="space-y-3">
                     <div className="rounded-xl border border-[#FDE68A] bg-[#FFFBEB] px-4 py-5 text-center space-y-2">
                       <div className="mx-auto size-10 rounded-full bg-white text-[#B45309] border border-[#FDE68A] flex items-center justify-center">
                         <BookOpen className="size-5" aria-hidden="true" />
                       </div>
                       <p className="text-xs font-semibold uppercase tracking-wide text-[#92400E]">
-                        Đã ghi sổ nợ • {activeTerminalOrder.order_code}
+                        Đã ghi sổ nợ • {confirmedOrder.order_code}
                       </p>
                       <p className="font-sans tabular-nums text-2xl font-bold text-[#92400E]">
-                        {formatVND(activeTerminalOrder.total_vnd)}
+                        {formatVND(confirmedOrder.total_vnd)}
                       </p>
                       <p className="text-xs text-[#B45309]">
-                        {cleanCustomerDisplay(activeTerminalOrder.customer_name) ||
-                          cleanCustomerDisplay(activeTerminalOrder.table_or_channel)}
+                        {cleanCustomerDisplay(confirmedOrder.customer_name) ||
+                          cleanCustomerDisplay(confirmedOrder.table_or_channel)}
                       </p>
 
                       <div className="flex flex-wrap justify-center gap-2 pt-1.5">
@@ -1578,10 +1524,10 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                           onClick={() => {
                             const msg = formatTransferReminderText({
                               customerName:
-                                cleanCustomerDisplay(activeTerminalOrder.customer_name) || 'anh/chị',
-                              orderCode: activeTerminalOrder.order_code,
-                              amountVnd: activeTerminalOrder.total_vnd,
-                              notes: activeTerminalOrder.notes,
+                                cleanCustomerDisplay(confirmedOrder.customer_name) || 'anh/chị',
+                              orderCode: confirmedOrder.order_code,
+                              amountVnd: confirmedOrder.total_vnd,
+                              notes: confirmedOrder.notes,
                             });
                             void handleCopyCode(msg);
                           }}
@@ -1605,9 +1551,9 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                     {showDebtQr && (
                       <div className="flex justify-center">
                         <LocalVietQRCode
-                          amount={activeTerminalOrder.total_vnd}
-                          addInfo={activeTerminalOrder.order_code}
-                          orderCode={activeTerminalOrder.order_code}
+                          amount={confirmedOrder.total_vnd}
+                          addInfo={confirmedOrder.order_code}
+                          orderCode={confirmedOrder.order_code}
                           compact
                           showDownload
                         />
@@ -1618,92 +1564,77 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() => onInspectOrderDetail(activeTerminalOrder.id)}
+                        onClick={() => onInspectOrderDetail(confirmedOrder.id)}
                         className="min-h-[36px] flex-1 rounded-lg border-[#EAE0E7] bg-white text-xs font-semibold cursor-pointer"
                       >
                         <FileText className="size-3.5" aria-hidden="true" />
                         <span>Xem chi tiết đơn</span>
                       </Button>
-                      {savedOrderResult && (
-                        <Button
-                          type="button"
-                          onClick={() => setSavedOrderResult(null)}
-                          className="min-h-[36px] flex-1 rounded-lg bg-primary text-white text-xs font-semibold cursor-pointer"
-                        >
-                          Tạo đơn mới
-                        </Button>
-                      )}
+                      <Button
+                        type="button"
+                        onClick={() => setSavedOrderResult(null)}
+                        className="min-h-[36px] flex-1 rounded-lg bg-primary text-white text-xs font-semibold cursor-pointer"
+                      >
+                        Tạo đơn mới
+                      </Button>
                     </div>
                   </div>
-                ) : null
-              ) : activeTerminalHasLocalQr ? (
-                <div className="flex flex-col items-center space-y-3">
-                  {activePaymentMethod === 'split' && (
-                    <div className="w-full grid grid-cols-2 gap-2 text-xs">
-                      <div className="rounded-lg border border-[#A7F3D0] bg-[#ECFDF5] px-3 py-2">
-                        <p className="text-[11px] text-[#047857]">Tiền mặt tại quầy</p>
-                        <p className="font-sans tabular-nums font-bold text-[#065F46]">
-                          {formatVND(activeCashAmountVnd)}
+                ) : confirmedHasLocalQr ? (
+                  <div className="flex flex-col items-center space-y-3">
+                    {confirmedPaymentMethod === 'split' && (
+                      <div className="w-full grid grid-cols-2 gap-2 text-xs">
+                        <div className="rounded-lg border border-[#A7F3D0] bg-[#ECFDF5] px-3 py-2">
+                          <p className="text-[11px] text-[#047857]">Tiền mặt tại quầy</p>
+                          <p className="font-sans tabular-nums font-bold text-[#065F46]">
+                            {formatVND(confirmedCashAmountVnd)}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border border-[#EAB8D2] bg-white px-3 py-2">
+                          <p className="text-[11px] text-muted-foreground">Quét VietQR</p>
+                          <p className="font-sans tabular-nums font-bold text-[#A50064]">
+                            {formatVND(confirmedTransferAmountVnd)}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    <LocalVietQRCode
+                      amount={confirmedTransferAmountVnd}
+                      addInfo={confirmedOrder.order_code}
+                      orderCode={confirmedOrder.order_code}
+                      showDownload
+                    />
+
+                    <div className="w-full flex items-center justify-between gap-2 rounded-lg border border-[#F0D2E2] bg-white/95 px-3.5 py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-[11px] text-muted-foreground truncate">
+                          {`Đơn ${confirmedOrder.order_code} • Chờ quét`}
+                        </p>
+                        <p className="font-sans tabular-nums text-lg font-bold text-[#A50064]">
+                          {formatVND(confirmedTransferAmountVnd)}
                         </p>
                       </div>
-                      <div className="rounded-lg border border-[#EAB8D2] bg-white px-3 py-2">
-                        <p className="text-[11px] text-muted-foreground">Quét VietQR</p>
-                        <p className="font-sans tabular-nums font-bold text-[#A50064]">
-                          {formatVND(activeTerminalAmountVnd)}
-                        </p>
-                      </div>
-                    </div>
-                  )}
 
-                  <LocalVietQRCode
-                    amount={activeTerminalAmountVnd}
-                    addInfo={activeTerminalOrder?.order_code ?? 'TAM TINH DON MOI'}
-                    orderCode={activeTerminalOrder?.order_code}
-                    showDownload
-                  />
-
-                  <div className="w-full flex items-center justify-between gap-2 rounded-lg border border-[#F0D2E2] bg-white/95 px-3.5 py-2.5">
-                    <div className="min-w-0">
-                      <p className="text-[11px] text-muted-foreground truncate">
-                        {savedOrderResult?.order
-                          ? `Đơn ${savedOrderResult.order.order_code} • Chờ quét`
-                          : draft
-                            ? 'Số tiền dự kiến'
-                            : activeTerminalOrder
-                              ? cleanCustomerDisplay(activeTerminalOrder.customer_name) ||
-                                cleanCustomerDisplay(activeTerminalOrder.table_or_channel)
-                              : 'Số tiền cần thu'}
-                      </p>
-                      <p className="font-sans tabular-nums text-lg font-bold text-[#A50064]">
-                        {formatVND(activeTerminalAmountVnd)}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {activeTerminalOrder && (
+                      <div className="flex items-center gap-1.5 shrink-0">
                         <Button
                           type="button"
                           variant="outline"
-                          onClick={() => onInspectOrderDetail(activeTerminalOrder.id)}
+                          onClick={() => onInspectOrderDetail(confirmedOrder.id)}
                           className="min-h-[36px] rounded-lg border-[#EAE0E7] bg-white text-xs font-semibold cursor-pointer"
                         >
                           Chi tiết
                         </Button>
-                      )}
-                      {activeTerminalOrder && (
                         <Button
                           type="button"
-                          onClick={() => onProceedToReceiptVerify(activeTerminalOrder)}
+                          onClick={() => onProceedToReceiptVerify(confirmedOrder)}
                           className="min-h-[36px] rounded-lg border border-[#EAB8D2] bg-[#FDF2F8] text-[#A50064] hover:bg-[#FCE7F3] text-xs font-semibold cursor-pointer shadow-none"
                         >
                           <ShieldCheck className="size-3.5 text-[#A50064]" aria-hidden="true" />
                           <span>Kiểm duyệt CK</span>
                         </Button>
-                      )}
+                      </div>
                     </div>
-                  </div>
 
-                  {savedOrderResult && !draft && (
                     <Button
                       type="button"
                       variant="outline"
@@ -1712,15 +1643,11 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                     >
                       Tạo đơn mới cho khách tiếp theo
                     </Button>
-                  )}
-                </div>
-              ) : (
-                <div className="rounded-lg border border-[#F0D2E2] bg-white/80 px-4 py-6 text-center text-xs text-muted-foreground">
-                  Chọn món từ thực đơn hoặc lên đơn để sinh mã VietQR tự động.
-                </div>
-              )}
-            </div>
-          </section>
+                  </div>
+                ) : null}
+              </div>
+            </section>
+          )}
 
           {/* Clickable Recent Orders List */}
           <section aria-labelledby="recent-orders-heading" className="surface-card rounded-xl p-4 space-y-2.5">
@@ -1734,78 +1661,79 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
             </div>
 
             <div className="divide-y divide-[#F0E7ED] max-h-[250px] overflow-y-auto pr-1">
-              {orders.slice(0, 8).map((order) => {
-                const displayCustomer = cleanCustomerDisplay(order.customer_name);
-                const displayChannel = cleanCustomerDisplay(order.table_or_channel);
-                const showCustomerSuffix =
-                  Boolean(displayCustomer) &&
-                  displayCustomer.trim().toLowerCase() !== displayChannel.trim().toLowerCase();
-                const isSelected = activeTerminalOrder?.id === order.id && !draft;
-                const methodLabel =
-                  order.payment_method === 'cash'
-                    ? 'Tiền mặt'
-                    : order.payment_method === 'split'
-                      ? 'Tách tiền'
-                      : order.payment_method === 'debt'
-                        ? 'Ghi sổ'
-                        : 'VietQR';
+              {orders.length === 0 ? (
+                <p className="py-6 text-center text-xs text-muted-foreground">
+                  Chưa có đơn hàng nào trong ca hôm nay.
+                </p>
+              ) : (
+                orders.slice(0, 8).map((order) => {
+                  const displayCustomer = cleanCustomerDisplay(order.customer_name);
+                  const displayChannel = cleanCustomerDisplay(order.table_or_channel);
+                  const showCustomerSuffix =
+                    Boolean(displayCustomer) &&
+                    displayCustomer.trim().toLowerCase() !== displayChannel.trim().toLowerCase();
+                  const isSelected = confirmedOrder?.id === order.id && !draft;
+                  const methodLabel =
+                    order.payment_method === 'cash'
+                      ? 'Tiền mặt'
+                      : order.payment_method === 'split'
+                        ? 'Tách tiền'
+                        : order.payment_method === 'debt'
+                          ? 'Ghi sổ'
+                          : 'VietQR';
 
-                return (
-                  <div
-                    key={order.id}
-                    className={`py-2.5 px-2.5 rounded-lg flex items-center justify-between gap-2 transition-colors ${
-                      isSelected
-                        ? 'bg-[#FDF2F8] border border-[#F3D0E2]'
-                        : 'hover:bg-[#FBF8FA] border border-transparent'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDraft(null);
-                        setCashReceivedVnd(0);
-                        setSavedOrderResult(null);
-                        setInspectedOrderId(order.id);
-                      }}
-                      className="min-w-0 flex-1 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+                  return (
+                    <div
+                      key={order.id}
+                      className={`py-2.5 px-2.5 rounded-lg flex items-center justify-between gap-2 transition-colors ${
+                        isSelected
+                          ? 'bg-[#FDF2F8] border border-[#F3D0E2]'
+                          : 'hover:bg-[#FBF8FA] border border-transparent'
+                      }`}
                     >
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-foreground">
-                          {order.order_code}
-                        </span>
-                        <OrderStatusText status={order.status} />
-                      </div>
-                      <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                        {displayChannel}
-                        {showCustomerSuffix ? ` • ${displayCustomer}` : ''}
-                        {` • ${methodLabel}`}
-                      </p>
-                    </button>
-
-                    <div className="text-right shrink-0 flex items-center gap-1.5">
-                      <span className="font-sans tabular-nums text-xs font-bold text-foreground">
-                        {formatVND(order.total_vnd)}
-                      </span>
                       <button
                         type="button"
                         onClick={() => onInspectOrderDetail(order.id)}
-                        className="min-h-[28px] px-2 rounded-md border border-[#EAE0E7] bg-white text-[11px] font-medium text-muted-foreground hover:text-[#A50064] hover:border-[#EAB8D2] cursor-pointer"
+                        className="min-w-0 flex-1 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
                       >
-                        Chi tiết
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs font-bold text-foreground">
+                            {order.order_code}
+                          </span>
+                          <OrderStatusText status={order.status} />
+                        </div>
+                        <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                          {displayChannel}
+                          {showCustomerSuffix ? ` • ${displayCustomer}` : ''}
+                          {` • ${methodLabel}`}
+                        </p>
                       </button>
-                      {order.status === 'pending_payment' && order.payment_method !== 'cash' && (
+
+                      <div className="text-right shrink-0 flex items-center gap-1.5">
+                        <span className="font-sans tabular-nums text-xs font-bold text-foreground">
+                          {formatVND(order.total_vnd)}
+                        </span>
                         <button
                           type="button"
-                          onClick={() => onProceedToReceiptVerify(order)}
-                          className="min-h-[28px] px-2 rounded-md border border-[#EAB8D2] bg-[#FDF2F8] text-[11px] font-semibold text-primary hover:bg-[#FCE7F3] cursor-pointer"
+                          onClick={() => onInspectOrderDetail(order.id)}
+                          className="min-h-[28px] px-2 rounded-md border border-[#EAE0E7] bg-white text-[11px] font-medium text-muted-foreground hover:text-[#A50064] hover:border-[#EAB8D2] cursor-pointer"
                         >
-                          Soát bill
+                          Chi tiết
                         </button>
-                      )}
+                        {order.status === 'pending_payment' && order.payment_method !== 'cash' && (
+                          <button
+                            type="button"
+                            onClick={() => onProceedToReceiptVerify(order)}
+                            className="min-h-[28px] px-2 rounded-md border border-[#EAB8D2] bg-[#FDF2F8] text-[11px] font-semibold text-primary hover:bg-[#FCE7F3] cursor-pointer"
+                          >
+                            Soát bill
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </section>
         </div>

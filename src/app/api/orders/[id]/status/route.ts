@@ -94,6 +94,37 @@ export async function POST(
         .eq('order_id', id);
     }
 
+    if (nextStatus === 'cancelled') {
+      const { data: orderItemsData } = await supabase
+        .from('order_items')
+        .select('menu_item_id, quantity')
+        .eq('order_id', id);
+
+      const decByMenuId = new Map<string, number>();
+      for (const row of (orderItemsData ?? []) as Array<{ menu_item_id: string | null; quantity: number }>) {
+        if (row.menu_item_id) {
+          decByMenuId.set(
+            row.menu_item_id,
+            (decByMenuId.get(row.menu_item_id) ?? 0) + Math.max(0, row.quantity)
+          );
+        }
+      }
+      if (decByMenuId.size > 0) {
+        const { data: menuRows } = await supabase
+          .from('menu_items')
+          .select('id, daily_sold_count')
+          .in('id', Array.from(decByMenuId.keys()));
+
+        for (const m of (menuRows ?? []) as Array<{ id: string; daily_sold_count: number }>) {
+          const dec = decByMenuId.get(m.id) ?? 0;
+          await supabase
+            .from('menu_items')
+            .update({ daily_sold_count: Math.max(0, m.daily_sold_count - dec) })
+            .eq('id', m.id);
+        }
+      }
+    }
+
     return NextResponse.json(
       { ok: true, order: updatedData as OrderRow },
       { status: 200 }

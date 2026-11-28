@@ -150,7 +150,7 @@ export async function generateNextOrderCode(supabase: SupabaseClient<Database>):
     .order('created_at', { ascending: false })
     .limit(50);
 
-  let maxNum = 1003;
+  let maxNum = 1000;
   for (const row of (data ?? []) as Array<{ order_code: string }>) {
     const match = /^DH(\d+)$/i.exec(row.order_code.trim());
     if (match) {
@@ -254,6 +254,30 @@ export async function persistOrderToSupabase(
 
   if (itemsErr) {
     throw new Error(itemsErr.message);
+  }
+
+  // Increment real-time daily_sold_count on matched menu items
+  const qtyByMenuId = new Map<string, number>();
+  for (const item of draft.items) {
+    if (item.menuItemId) {
+      qtyByMenuId.set(item.menuItemId, (qtyByMenuId.get(item.menuItemId) ?? 0) + item.quantity);
+    }
+  }
+  if (qtyByMenuId.size > 0) {
+    const { data: currentMenuRows } = await supabase
+      .from('menu_items')
+      .select('id, daily_sold_count')
+      .in('id', Array.from(qtyByMenuId.keys()));
+
+    for (const row of (currentMenuRows ?? []) as Array<{ id: string; daily_sold_count: number }>) {
+      const addQty = qtyByMenuId.get(row.id) ?? 0;
+      if (addQty > 0) {
+        await supabase
+          .from('menu_items')
+          .update({ daily_sold_count: Math.max(0, row.daily_sold_count + addQty) })
+          .eq('id', row.id);
+      }
+    }
   }
 
   if (draft.paymentMethod === 'debt') {

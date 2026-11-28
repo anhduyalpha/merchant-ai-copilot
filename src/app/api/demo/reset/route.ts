@@ -82,63 +82,71 @@ async function executeAtomicDemoReset(): Promise<ResetResult> {
     };
   }
 
-  const { error: ordersError } = await supabase.from('orders').insert(dataset.orders);
-  if (ordersError) {
-    return {
-      ok: false,
-      status: 500,
-      code: 'SEED_ORDERS_FAILED',
-      message: `Failed seeding orders: ${ordersError.message}`,
-      seededCounts,
-      resetAt: new Date().toISOString(),
-    };
+  if (dataset.orders.length > 0) {
+    const { error: ordersError } = await supabase.from('orders').insert(dataset.orders);
+    if (ordersError) {
+      return {
+        ok: false,
+        status: 500,
+        code: 'SEED_ORDERS_FAILED',
+        message: `Failed seeding orders: ${ordersError.message}`,
+        seededCounts,
+        resetAt: new Date().toISOString(),
+      };
+    }
   }
 
-  const { error: itemsError } = await supabase.from('order_items').insert(dataset.orderItems);
-  if (itemsError) {
-    return {
-      ok: false,
-      status: 500,
-      code: 'SEED_ORDER_ITEMS_FAILED',
-      message: `Failed seeding order_items: ${itemsError.message}`,
-      seededCounts,
-      resetAt: new Date().toISOString(),
-    };
+  if (dataset.orderItems.length > 0) {
+    const { error: itemsError } = await supabase.from('order_items').insert(dataset.orderItems);
+    if (itemsError) {
+      return {
+        ok: false,
+        status: 500,
+        code: 'SEED_ORDER_ITEMS_FAILED',
+        message: `Failed seeding order_items: ${itemsError.message}`,
+        seededCounts,
+        resetAt: new Date().toISOString(),
+      };
+    }
   }
 
-  const { error: receiptsError } = await supabase
-    .from('payment_receipts')
-    .insert(dataset.paymentReceipts);
-  if (receiptsError) {
-    return {
-      ok: false,
-      status: 500,
-      code: 'SEED_RECEIPTS_FAILED',
-      message: `Failed seeding payment_receipts: ${receiptsError.message}`,
-      seededCounts,
-      resetAt: new Date().toISOString(),
-    };
+  if (dataset.paymentReceipts.length > 0) {
+    const { error: receiptsError } = await supabase
+      .from('payment_receipts')
+      .insert(dataset.paymentReceipts);
+    if (receiptsError) {
+      return {
+        ok: false,
+        status: 500,
+        code: 'SEED_RECEIPTS_FAILED',
+        message: `Failed seeding payment_receipts: ${receiptsError.message}`,
+        seededCounts,
+        resetAt: new Date().toISOString(),
+      };
+    }
   }
 
-  const { error: debtsError } = await supabase
-    .from('customer_debts')
-    .insert(dataset.customerDebts);
-  if (debtsError) {
-    return {
-      ok: false,
-      status: 500,
-      code: 'SEED_DEBTS_FAILED',
-      message: `Failed seeding customer_debts: ${debtsError.message}`,
-      seededCounts,
-      resetAt: new Date().toISOString(),
-    };
+  if (dataset.customerDebts.length > 0) {
+    const { error: debtsError } = await supabase
+      .from('customer_debts')
+      .insert(dataset.customerDebts);
+    if (debtsError) {
+      return {
+        ok: false,
+        status: 500,
+        code: 'SEED_DEBTS_FAILED',
+        message: `Failed seeding customer_debts: ${debtsError.message}`,
+        seededCounts,
+        resetAt: new Date().toISOString(),
+      };
+    }
   }
 
   return {
     ok: true,
     status: 200,
     code: 'DEMO_RESET_COMPLETED',
-    message: 'Synthetic demo dataset reset and re-seeded successfully.',
+    message: 'Cleared transactional data and initialized clean menu catalog.',
     seededCounts,
     resetAt: new Date().toISOString(),
   };

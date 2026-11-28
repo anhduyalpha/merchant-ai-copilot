@@ -1,5 +1,4 @@
 import type { Database } from '@/types/database';
-import { buildVietQRUrl } from '@/lib/vietqr';
 
 type MenuItemInsert = Database['public']['Tables']['menu_items']['Insert'];
 type OrderInsert = Database['public']['Tables']['orders']['Insert'];
@@ -188,11 +187,6 @@ export function buildSyntheticSeedDataset(): {
   paymentReceipts: PaymentReceiptInsert[];
   customerDebts: CustomerDebtInsert[];
 } {
-  const now = Date.now();
-  const twoHoursAgoIso = new Date(now - 2 * 60 * 60 * 1000).toISOString();
-  const reviewedIso = new Date(now - 119 * 60 * 1000).toISOString();
-  const todayDate = new Date(now).toISOString().slice(0, 10);
-
   const menuItems: MenuItemInsert[] = [
     {
       id: '11111111-1111-4111-8111-111111111101',
@@ -202,7 +196,7 @@ export function buildSyntheticSeedDataset(): {
       price_vnd: 29000,
       aliases: ['cf sữa', 'cf sua', 'cà phê sữa', 'nâu đá', 'nau da', 'cafe sua da'],
       is_available: true,
-      daily_sold_count: 34,
+      daily_sold_count: 0,
     },
     {
       id: '11111111-1111-4111-8111-111111111102',
@@ -212,7 +206,7 @@ export function buildSyntheticSeedDataset(): {
       price_vnd: 25000,
       aliases: ['cf đen', 'cf den', 'đen đá', 'den da', 'cafe den'],
       is_available: true,
-      daily_sold_count: 22,
+      daily_sold_count: 0,
     },
     {
       id: '11111111-1111-4111-8111-111111111103',
@@ -222,7 +216,7 @@ export function buildSyntheticSeedDataset(): {
       price_vnd: 32000,
       aliases: ['bx', 'bạc xỉu', 'bac xiu', 'bạc sỉu', 'cf nhiều sữa'],
       is_available: true,
-      daily_sold_count: 28,
+      daily_sold_count: 0,
     },
     {
       id: '11111111-1111-4111-8111-111111111104',
@@ -232,7 +226,7 @@ export function buildSyntheticSeedDataset(): {
       price_vnd: 35000,
       aliases: ['trà đào', 'tra dao', 'tdcs', 'đào cam sả', 'tra dao cam sa'],
       is_available: true,
-      daily_sold_count: 19,
+      daily_sold_count: 0,
     },
     {
       id: '11111111-1111-4111-8111-111111111105',
@@ -242,7 +236,7 @@ export function buildSyntheticSeedDataset(): {
       price_vnd: 35000,
       aliases: ['trà vải', 'tra vai', 'vải hồng', 'tra vai hoa hong'],
       is_available: true,
-      daily_sold_count: 3,
+      daily_sold_count: 0,
     },
     {
       id: '11111111-1111-4111-8111-111111111106',
@@ -252,7 +246,7 @@ export function buildSyntheticSeedDataset(): {
       price_vnd: 42000,
       aliases: ['matcha', 'trà xanh sữa', 'matcha kem muối', 'matcha latte'],
       is_available: true,
-      daily_sold_count: 14,
+      daily_sold_count: 0,
     },
     {
       id: '11111111-1111-4111-8111-111111111107',
@@ -262,7 +256,7 @@ export function buildSyntheticSeedDataset(): {
       price_vnd: 39000,
       aliases: ['sc việt quất', 'sữa chua vq', 'sua chua viet quat'],
       is_available: true,
-      daily_sold_count: 1,
+      daily_sold_count: 0,
     },
     {
       id: '11111111-1111-4111-8111-111111111108',
@@ -272,171 +266,15 @@ export function buildSyntheticSeedDataset(): {
       price_vnd: 18000,
       aliases: ['bmq', 'bánh mì que', 'banh mi que', 'pate que'],
       is_available: true,
-      daily_sold_count: 11,
+      daily_sold_count: 0,
     },
   ];
 
-  const qrDh1001 = buildVietQRUrl({ amount: 64000, addInfo: 'DH1001' });
-  const qrDh1002 = buildVietQRUrl({ amount: 96000, addInfo: 'DH1002' });
-  const qrDh1003 = buildVietQRUrl({ amount: 77000, addInfo: 'DH1003' });
-
-  const orders: OrderInsert[] = [
-    {
-      id: '22222222-2222-4222-8222-222222222201',
-      order_code: 'DH1001',
-      table_or_channel: 'Bàn 1',
-      customer_name: 'Bàn 1',
-      source_type: 'chat',
-      raw_input: 'Cho bàn 1 1 cf sữa ít đá với 1 trà đào nha shop',
-      subtotal_vnd: 64000,
-      discount_vnd: 0,
-      total_vnd: 64000,
-      cash_amount_vnd: 0,
-      transfer_amount_vnd: 64000,
-      payment_method: 'vietqr',
-      status: 'paid',
-      vietqr_url: qrDh1001,
-      notes: 'Đã soát chuyển khoản hợp lệ FT26330998811',
-    },
-    {
-      id: '22222222-2222-4222-8222-222222222202',
-      order_code: 'DH1002',
-      table_or_channel: 'Zalo',
-      customer_name: 'Anh Minh (Thiết kế)',
-      source_type: 'chat',
-      raw_input: 'Em ơi ship sang studio cho anh 3 bx ít ngọt nhé, cuối chiều anh ck gộp luôn',
-      subtotal_vnd: 96000,
-      discount_vnd: 0,
-      total_vnd: 96000,
-      cash_amount_vnd: 0,
-      transfer_amount_vnd: 0,
-      payment_method: 'debt',
-      status: 'debt',
-      vietqr_url: qrDh1002,
-      notes: 'Khách quen studio cạnh quán ghi sổ cuối ngày',
-    },
-    {
-      id: '22222222-2222-4222-8222-222222222203',
-      order_code: 'DH1003',
-      table_or_channel: 'Facebook',
-      customer_name: 'Chị Lan (Tiệm hoa)',
-      source_type: 'chat',
-      raw_input: 'Cho chị 1 matcha kem muối với 1 trà đào qua tiệm hoa nhé, ghi sổ giúp chị nha',
-      subtotal_vnd: 77000,
-      discount_vnd: 0,
-      total_vnd: 77000,
-      cash_amount_vnd: 0,
-      transfer_amount_vnd: 0,
-      payment_method: 'debt',
-      status: 'debt',
-      vietqr_url: qrDh1003,
-      notes: 'Khách quen tiệm hoa đầu hẻm',
-    },
-  ];
-
-  const orderItems: OrderItemInsert[] = [
-    {
-      order_id: '22222222-2222-4222-8222-222222222201',
-      menu_item_id: '11111111-1111-4111-8111-111111111101',
-      item_name: 'Cà phê sữa đá',
-      quantity: 1,
-      unit_price_vnd: 29000,
-      modifiers: ['ít đá'],
-      payment_split_tag: 'transfer',
-      line_total_vnd: 29000,
-    },
-    {
-      order_id: '22222222-2222-4222-8222-222222222201',
-      menu_item_id: '11111111-1111-4111-8111-111111111104',
-      item_name: 'Trà đào cam sả',
-      quantity: 1,
-      unit_price_vnd: 35000,
-      modifiers: [],
-      payment_split_tag: 'transfer',
-      line_total_vnd: 35000,
-    },
-    {
-      order_id: '22222222-2222-4222-8222-222222222202',
-      menu_item_id: '11111111-1111-4111-8111-111111111103',
-      item_name: 'Bạc xỉu đá',
-      quantity: 3,
-      unit_price_vnd: 32000,
-      modifiers: ['ít ngọt'],
-      payment_split_tag: 'shared',
-      line_total_vnd: 96000,
-    },
-    {
-      order_id: '22222222-2222-4222-8222-222222222203',
-      menu_item_id: '11111111-1111-4111-8111-111111111106',
-      item_name: 'Matcha Latte kem muối',
-      quantity: 1,
-      unit_price_vnd: 42000,
-      modifiers: [],
-      payment_split_tag: 'shared',
-      line_total_vnd: 42000,
-    },
-    {
-      order_id: '22222222-2222-4222-8222-222222222203',
-      menu_item_id: '11111111-1111-4111-8111-111111111104',
-      item_name: 'Trà đào cam sả',
-      quantity: 1,
-      unit_price_vnd: 35000,
-      modifiers: [],
-      payment_split_tag: 'shared',
-      line_total_vnd: 35000,
-    },
-  ];
-
-  const paymentReceipts: PaymentReceiptInsert[] = [
-    {
-      id: '33333333-3333-4333-8333-333333333301',
-      order_id: '22222222-2222-4222-8222-222222222201',
-      transaction_ref: 'FT26330998811',
-      bank_name: 'MB Bank',
-      extracted_amount_vnd: 64000,
-      expected_amount_vnd: 64000,
-      receipt_timestamp: twoHoursAgoIso,
-      transfer_note: 'DH1001',
-      image_url: '/demo-assets/receipt-dh1001-valid.png',
-      amount_match: true,
-      is_duplicate_ref: false,
-      timestamp_anomaly: false,
-      visual_tampering_flags: [],
-      risk_level: 'low',
-      verdict: 'approved',
-      reviewed_by: 'Chủ quán',
-      reviewed_at: reviewedIso,
-    },
-  ];
-
-  const customerDebts: CustomerDebtInsert[] = [
-    {
-      id: '44444444-4444-4444-8444-444444444401',
-      order_id: '22222222-2222-4222-8222-222222222202',
-      order_code: 'DH1002',
-      customer_name: 'Anh Minh (Thiết kế)',
-      customer_alias: 'Anh Minh Studio',
-      channel_handle: 'Zalo: 0900-000-102',
-      amount_due_vnd: 96000,
-      due_date: todayDate,
-      status: 'unpaid',
-      vietqr_url: qrDh1002,
-      notes: '3 Bạc xỉu đá ít ngọt buổi chiều',
-    },
-    {
-      id: '44444444-4444-4444-8444-444444444402',
-      order_id: '22222222-2222-4222-8222-222222222203',
-      order_code: 'DH1003',
-      customer_name: 'Chị Lan (Tiệm hoa)',
-      customer_alias: 'Chị Lan Hoa Tươi',
-      channel_handle: 'Messenger: @lan.tiemhoa',
-      amount_due_vnd: 77000,
-      due_date: todayDate,
-      status: 'unpaid',
-      vietqr_url: qrDh1003,
-      notes: '1 Matcha Latte kem muối + 1 Trà đào cam sả',
-    },
-  ];
-
-  return { menuItems, orders, orderItems, paymentReceipts, customerDebts };
+  return {
+    menuItems,
+    orders: [],
+    orderItems: [],
+    paymentReceipts: [],
+    customerDebts: [],
+  };
 }

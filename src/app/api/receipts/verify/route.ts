@@ -106,7 +106,7 @@ export async function POST(request: Request) {
         : targetOrder.total_vnd
       : expectedAmount ?? matchedScenario?.expectedAmountVnd;
 
-    if (expectedAmountVnd === undefined || expectedAmountVnd < 0) {
+    if (expectedAmountVnd === undefined && !hasImage) {
       return NextResponse.json(
         {
           ok: false,
@@ -132,7 +132,10 @@ export async function POST(request: Request) {
       ].join('\n');
 
       const targetLabel = targetOrder?.order_code || orderCode || matchedScenario?.targetOrderCode || 'chưa rõ';
-      const userPrompt = `Kiểm tra ảnh biên lai cho đơn ${targetLabel} với số tiền kỳ vọng ${expectedAmountVnd} VND. Hãy trích xuất đầy đủ và kiểm tra dấu hiệu chỉnh sửa ảnh.`;
+      const userPrompt =
+        expectedAmountVnd !== undefined
+          ? `Kiểm tra ảnh biên lai cho đơn ${targetLabel} với số tiền kỳ vọng ${expectedAmountVnd} VND. Hãy trích xuất đầy đủ và kiểm tra dấu hiệu chỉnh sửa ảnh.`
+          : 'Kiểm tra ảnh biên lai chuyển khoản độc lập (chưa gắn đơn hàng). Hãy trích xuất đầy đủ số tiền, mã giao dịch, ngân hàng, nội dung CK và kiểm tra dấu hiệu chỉnh sửa ảnh.';
 
       extraction = await generateStructuredJSON({
         systemPrompt,
@@ -188,14 +191,19 @@ export async function POST(request: Request) {
       );
     }
 
+    const isStandaloneAudit = !targetOrder && expectedAmountVnd === undefined;
+    const effectiveExpectedAmountVnd = expectedAmountVnd ?? extraction.extractedAmountVnd;
+
     // Layer 1: Exact VND Amount Match (explicit Shortage vs Overpayment messaging)
-    const diffVnd = extraction.extractedAmountVnd - expectedAmountVnd;
+    const diffVnd = extraction.extractedAmountVnd - effectiveExpectedAmountVnd;
     const exactAmountMatch = diffVnd === 0;
-    const amountDetailVi = exactAmountMatch
-      ? `Khớp chính xác ${formatVND(expectedAmountVnd)}.`
-      : diffVnd < 0
-        ? `Thiếu ${formatVND(Math.abs(diffVnd))} (biên lai ${formatVND(extraction.extractedAmountVnd)} / cần thu ${formatVND(expectedAmountVnd)}).`
-        : `Dư ${formatVND(diffVnd)} (biên lai ${formatVND(extraction.extractedAmountVnd)} / cần thu ${formatVND(expectedAmountVnd)}).`;
+    const amountDetailVi = isStandaloneAudit
+      ? `Đối soát độc lập (chưa gắn mã đơn): ghi nhận số tiền trên biên lai ${formatVND(extraction.extractedAmountVnd)}.`
+      : exactAmountMatch
+        ? `Khớp chính xác ${formatVND(effectiveExpectedAmountVnd)}.`
+        : diffVnd < 0
+          ? `Thiếu ${formatVND(Math.abs(diffVnd))} (biên lai ${formatVND(extraction.extractedAmountVnd)} / cần thu ${formatVND(effectiveExpectedAmountVnd)}).`
+          : `Dư ${formatVND(diffVnd)} (biên lai ${formatVND(extraction.extractedAmountVnd)} / cần thu ${formatVND(effectiveExpectedAmountVnd)}).`;
 
     // Layer 2: Normalized Duplicate Transaction Reference Lookup in PostgreSQL
     const { data: recentRefs } = await supabase
@@ -323,7 +331,7 @@ export async function POST(request: Request) {
     const reasoningVi = checks.filter((c) => !c.passed).map((c) => c.detailVi);
     if (reasoningVi.length === 0) {
       reasoningVi.push(
-        `Tất cả 4 lớp kiểm chứng đều đạt: khớp ${formatVND(expectedAmountVnd)}, mã ${cleanRef} hợp lệ và không thấy dấu hiệu chỉnh sửa.`
+        `Tất cả 4 lớp kiểm chứng đều đạt: khớp ${formatVND(effectiveExpectedAmountVnd)}, mã ${cleanRef} hợp lệ và không thấy dấu hiệu chỉnh sửa.`
       );
     }
 
@@ -339,7 +347,7 @@ export async function POST(request: Request) {
         transaction_ref: cleanRef,
         bank_name: extraction.bankName,
         extracted_amount_vnd: extraction.extractedAmountVnd,
-        expected_amount_vnd: expectedAmountVnd,
+        expected_amount_vnd: effectiveExpectedAmountVnd,
         receipt_timestamp: receiptTimestamp,
         transfer_note: extraction.transferNote,
         image_url: imageUrl ?? matchedScenario?.imagePath ?? null,

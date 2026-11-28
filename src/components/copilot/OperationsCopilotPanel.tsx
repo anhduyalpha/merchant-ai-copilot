@@ -293,48 +293,55 @@ export const OperationsCopilotPanel = forwardRef<
           </div>
 
           <div className="space-y-2.5">
-            {topSellers.map((item) => {
-              const pct = Math.max(12, Math.round((item.daily_sold_count / maxSoldCount) * 100));
-              return (
-                <div key={item.id} className="space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-medium text-foreground truncate">{item.name}</span>
-                    <span className="font-sans tabular-nums text-muted-foreground shrink-0">
-                      {item.daily_sold_count} ly
-                    </span>
+            {topSellers.every((item) => item.daily_sold_count === 0) ? (
+              <p className="rounded-lg border border-[#EAE0E7] bg-[#FBF8FA] px-3.5 py-4 text-center text-xs text-muted-foreground">
+                Chưa phát sinh lượt bán trong ca hôm nay.
+              </p>
+            ) : (
+              topSellers.map((item) => {
+                const pct = Math.max(12, Math.round((item.daily_sold_count / maxSoldCount) * 100));
+                return (
+                  <div key={item.id} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-medium text-foreground truncate">{item.name}</span>
+                      <span className="font-sans tabular-nums text-muted-foreground shrink-0">
+                        {item.daily_sold_count} ly
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-[#F3EBF0] overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-[#A50064] to-[#D82D8B]"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="h-1.5 w-full rounded-full bg-[#F3EBF0] overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-[#A50064] to-[#D82D8B]"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
 
-          {slowSellers.length > 0 && (
-            <div className="pt-2.5 border-t border-[#EAE0E7] space-y-1.5">
-              <p className="text-[11px] font-semibold text-[#B45309] inline-flex items-center gap-1">
-                <TrendingDown className="size-3.5" aria-hidden="true" />
-                Cần đẩy bán trong ca
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {slowSellers.map((item) => (
-                  <span
-                    key={item.id}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#F3DFB4] bg-[#FFFBEB] px-2.5 py-1 text-xs text-foreground"
-                  >
-                    <span className="font-medium">{item.name}</span>
-                    <span className="font-sans tabular-nums text-[11px] text-[#B45309]">
-                      ({item.daily_sold_count} ly)
+          {slowSellers.length > 0 &&
+            paidOrderCount + (summary?.pendingOrderCount ?? 0) + (summary?.debtOrderCount ?? 0) > 0 && (
+              <div className="pt-2.5 border-t border-[#EAE0E7] space-y-1.5">
+                <p className="text-[11px] font-semibold text-[#B45309] inline-flex items-center gap-1">
+                  <TrendingDown className="size-3.5" aria-hidden="true" />
+                  Cần đẩy bán trong ca
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {slowSellers.map((item) => (
+                    <span
+                      key={item.id}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[#F3DFB4] bg-[#FFFBEB] px-2.5 py-1 text-xs text-foreground"
+                    >
+                      <span className="font-medium">{item.name}</span>
+                      <span className="font-sans tabular-nums text-[11px] text-[#B45309]">
+                        ({item.daily_sold_count} ly)
+                      </span>
                     </span>
-                  </span>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
         </section>
       </div>
 

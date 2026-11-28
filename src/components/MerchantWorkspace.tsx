@@ -6,14 +6,12 @@ import {
   Coffee,
   ReceiptText,
   ShieldCheck,
-  SlidersHorizontal,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   OperationsCopilotPanel,
   type OperationsCopilotHandle,
 } from '@/components/copilot/OperationsCopilotPanel';
-import { JudgeDemoBar, type JudgePresetId } from '@/components/demo/JudgeDemoBar';
 import { OrderDetailModal } from '@/components/pos/OrderDetailModal';
 import {
   OrderIntakePanel,
@@ -71,9 +69,6 @@ export function MerchantWorkspace() {
   const [detailOrderKey, setDetailOrderKey] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const [isResetting, setIsResetting] = useState(false);
-  const [activePreset, setActivePreset] = useState<JudgePresetId | null>(null);
-  const [simulatorOpen, setSimulatorOpen] = useState(false);
   const [statusPopoverOpen, setStatusPopoverOpen] = useState(false);
 
   const orderPanelRef = useRef<OrderIntakeHandle>(null);
@@ -139,17 +134,6 @@ export function MerchantWorkspace() {
   }, []);
 
   useEffect(() => {
-    function handleKeyShortcut(e: KeyboardEvent) {
-      if (e.altKey && e.key.toLowerCase() === 'd') {
-        e.preventDefault();
-        setSimulatorOpen((prev) => !prev);
-      }
-    }
-    window.addEventListener('keydown', handleKeyShortcut);
-    return () => window.removeEventListener('keydown', handleKeyShortcut);
-  }, []);
-
-  useEffect(() => {
     if (!statusPopoverOpen) return;
     function handleClickOutside(e: MouseEvent) {
       if (statusMenuRef.current && !statusMenuRef.current.contains(e.target as Node)) {
@@ -159,61 +143,6 @@ export function MerchantWorkspace() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [statusPopoverOpen]);
-
-  async function handleResetDemo() {
-    setIsResetting(true);
-    try {
-      const res = await fetch('/api/demo/reset', { method: 'POST', body: '{}' });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.message || 'Không thể khôi phục dữ liệu.');
-      }
-      setActivePreset(null);
-      setSelectedOrderId(null);
-      orderPanelRef.current?.resetView();
-      receiptPanelRef.current?.resetView();
-      copilotPanelRef.current?.resetView();
-      await loadWorkspaceData();
-      setSimulatorOpen(false);
-      toast.success('Đã khôi phục dữ liệu quầy về trạng thái ban đầu.');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Lỗi khôi phục dữ liệu.');
-    } finally {
-      setIsResetting(false);
-    }
-  }
-
-  function handleSelectJudgePreset(presetId: JudgePresetId) {
-    setActivePreset(presetId);
-    switch (presetId) {
-      case 'slang_chat':
-        setActiveTab('pos');
-        orderPanelRef.current?.runDemoPreset('chat');
-        break;
-      case 'handwritten_order':
-        setActiveTab('pos');
-        orderPanelRef.current?.runDemoPreset('handwritten');
-        break;
-      case 'valid_receipt':
-        setActiveTab('receipt');
-        receiptPanelRef.current?.runDemoPreset('valid_receipt');
-        break;
-      case 'tampered_receipt':
-        setActiveTab('receipt');
-        receiptPanelRef.current?.runDemoPreset('tampered_amount_receipt');
-        break;
-      case 'reused_receipt':
-        setActiveTab('receipt');
-        receiptPanelRef.current?.runDemoPreset('reused_transaction_ref');
-        break;
-      case 'copilot_revenue_debt':
-        setActiveTab('copilot');
-        copilotPanelRef.current?.runDemoPrompt(
-          'Tổng kết ca hôm nay, xem món nào cần đẩy bán và soạn tin nhắn nhắc khách còn ghi sổ kèm mã VietQR'
-        );
-        break;
-    }
-  }
 
   const summary = storeState?.summary;
   const isSystemHealthy = Boolean(health?.supabase.connected && health?.ai.activeProviderReady);
@@ -391,21 +320,6 @@ export function MerchantWorkspace() {
               <span>Ghi sổ: <strong className="tabular-nums text-[#B45309]">{summary?.unpaidDebtCount ?? 0}</strong></span>
             </div>
           </div>
-
-          <button
-            type="button"
-            onClick={() => setSimulatorOpen(true)}
-            aria-expanded={simulatorOpen}
-            className="w-full min-h-[40px] rounded-lg border border-[#EAE0E7] bg-white hover:bg-[#FDF2F8]/60 hover:border-[#F0D2E2] px-3 py-2 flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            <span className="inline-flex items-center gap-2">
-              <SlidersHorizontal className="size-3.5 text-primary" aria-hidden="true" />
-              <span>Bộ mô phỏng nhanh</span>
-            </span>
-            <kbd className="rounded border border-[#EAE0E7] bg-[#FBF8FA] px-1.5 py-0.5 font-mono text-[10px]">
-              Alt+D
-            </kbd>
-          </button>
         </div>
       </aside>
 
@@ -430,16 +344,6 @@ export function MerchantWorkspace() {
             </p>
           </div>
         </div>
-
-        <button
-          type="button"
-          onClick={() => setSimulatorOpen(true)}
-          aria-expanded={simulatorOpen}
-          className="min-h-[36px] rounded-lg border border-[#EAE0E7] bg-white px-2.5 py-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-foreground hover:bg-[#FDF2F8] hover:border-[#F0D2E2] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary shrink-0"
-        >
-          <SlidersHorizontal className="size-3.5 text-primary" aria-hidden="true" />
-          <span>Mô phỏng</span>
-        </button>
       </header>
 
       {/* Main Fluid Workspace Viewport */}
@@ -483,7 +387,6 @@ export function MerchantWorkspace() {
               selectedOrderId={selectedOrderId}
               onSelectOrderId={(id) => setSelectedOrderId(id)}
               onVerificationUpdated={loadWorkspaceData}
-              onOpenSimulator={() => setSimulatorOpen(true)}
               onInspectOrderDetail={(key) => setDetailOrderKey(key)}
             />
           </div>
@@ -541,16 +444,6 @@ export function MerchantWorkspace() {
           );
         })}
       </nav>
-
-      {/* Frosted Slide-Over Simulator Drawer (Closed by Default) */}
-      <JudgeDemoBar
-        open={simulatorOpen}
-        onClose={() => setSimulatorOpen(false)}
-        onSelectPreset={handleSelectJudgePreset}
-        onResetDemo={handleResetDemo}
-        isResetting={isResetting}
-        activePreset={activePreset}
-      />
 
       <OrderDetailModal
         order={
