@@ -255,7 +255,7 @@ export const ReceiptFraudInspector = forwardRef<
         scenarioOverride: scenario.id,
         expectedAmountOverride: scenario.expectedAmountVnd,
         orderCodeOverride: scenario.targetOrderCode,
-        omitTargetOrder: scenario.targetOrderCode !== targetOrder?.order_code,
+        omitTargetOrder: true,
       });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Không tải được ảnh biên lai.');

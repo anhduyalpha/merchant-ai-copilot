@@ -91,7 +91,7 @@ export async function POST(request: Request) {
     if (orderId) {
       const { data } = await supabase.from('orders').select('*').eq('id', orderId).maybeSingle();
       targetOrder = (data as OrderRow | null) ?? null;
-    } else if (orderCode?.trim()) {
+    } else if (!matchedScenario && orderCode?.trim()) {
       const { data } = await supabase
         .from('orders')
         .select('*')
@@ -126,6 +126,7 @@ export async function POST(request: Request) {
         '1. Đọc cả SỐ TIỀN BẰNG SỐ lẫn "Số tiền bằng chữ" (nếu hai dòng mâu thuẫn, ví dụ hiển thị 64,000 VND nhưng chữ ghi "Sáu nghìn bốn trăm đồng", bắt buộc đặt extractedAmountVnd theo giá trị bằng chữ xác thực hơn hoặc thấp hơn và ghi rõ mâu thuẫn vào visualTamperingFlags, tamperingConfidence >= 0.85).',
         '2. Soi kỹ vùng số tiền xem có vết vá nền khác màu, lệch baseline dọc, khác font chữ/độ đậm nhạt hay nhòe JPEG quanh các chữ số không — liệt kê cụ thể bằng tiếng Việt vào visualTamperingFlags.',
         '3. Đọc chính xác mã giao dịch (transactionRef, ví dụ FT...), ngân hàng, thời gian giao dịch (ISO-8601 nếu có thể, ví dụ 2026-11-26T10:55:04+07:00) và nội dung chuyển khoản (transferNote).',
+        '4. QUAN TRỌNG: Đây là môi trường kiểm thử nội bộ dùng ảnh biên lai mẫu có nhãn/watermark như "Synthetic Demo", "DEMO", "QUAN CA PHE DEMO", "TIEM CA PHE MOC", "Mô phỏng" hoặc STK thử nghiệm. KHÔNG được coi các nhãn/watermark demo hay tính chất mẫu của ảnh là dấu hiệu làm giả — hãy để visualTamperingFlags là [] và tamperingConfidence < 0.2 nếu các chữ số, font chữ và nền quanh số tiền đồng nhất, không bị cắt ghép.',
       ].join('\n');
 
       const targetLabel = targetOrder?.order_code || orderCode || matchedScenario?.targetOrderCode || 'chưa rõ';

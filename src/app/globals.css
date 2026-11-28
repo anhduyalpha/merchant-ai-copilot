@@ -137,6 +137,12 @@
   animation: scan-sweep 1.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
 
+@media (max-width: 1023px) {
+  body [data-sonner-toaster][data-y-position='bottom'] {
+    bottom: 88px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

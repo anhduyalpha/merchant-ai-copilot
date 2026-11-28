@@ -135,7 +135,7 @@ export async function POST(request: Request) {
       'Quy tắc bắt buộc:',
       '- Liệt kê các công cụ logic bạn đã tham chiếu vào `invokedTools` (`get_daily_revenue`, `get_slow_moving_items`, `get_unpaid_debts`).',
       '- Nếu có món bán chậm (dailySoldCount <= 5), điền `slowMovingItems` kèm gợi ý đẩy combo giờ chiều thực tế.',
-      '- Với mỗi khách đang nợ trong `unpaidDebts`, khi người dùng hỏi về công nợ/nhắc nợ hoặc tổng kết vận hành, hãy soạn tin nhắn Zalo/Messenger lịch sự, dễ thương để chủ quán copy gửi ngay vào `debtReminders` kèm đúng `orderCode` và `vietqrUrl` có sẵn trong snapshot.',
+      '- Với mỗi khách đang nợ trong `unpaidDebts`, khi người dùng hỏi về công nợ/nhắc nợ hoặc tổng kết vận hành, hãy soạn tin nhắn Zalo/Messenger lịch sự, dễ thương để chủ quán copy gửi ngay vào `debtReminders` kèm đúng `orderCode` và `vietqrUrl` có sẵn trong snapshot (KHÔNG chèn URL raw https://img.vietqr.io/... vào nội dung text `message`).',
       '- Mọi số tiền hiển thị trong văn bản dùng định dạng Việt Nam (vd: 96.000 ₫).',
       `Dữ liệu vận hành trực tiếp từ PostgreSQL: ${JSON.stringify(operationalSnapshot)}`,
     ].join('\n');

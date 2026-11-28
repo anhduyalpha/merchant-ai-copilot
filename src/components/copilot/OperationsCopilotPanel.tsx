@@ -57,8 +57,13 @@ const TOOL_LABELS_VI: Record<string, string> = {
 
 function stripRawQrUrl(text: string): string {
   return text
+    .replace(
+      /https?:\/\/img\.vietqr\.io\/\S*accountName=[A-Z0-9%+_.-]+(?:[ \t]+[A-Z0-9%+_-]{2,})*/g,
+      ''
+    )
     .replace(/https?:\/\/img\.vietqr\.io\/\S+/gi, '')
-    .replace(/Link VietQR(?:\s+thanh toán)?:\s*$/gim, '')
+    .replace(/Link VietQR(?:\s+thanh toán)?:\s*[.,]?$/gim, '')
+    .replace(/\s+([.,!?])/g, '$1')
     .replace(/\s{2,}/g, ' ')
     .trim();
 }

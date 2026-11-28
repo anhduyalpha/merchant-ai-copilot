@@ -29,7 +29,7 @@ export default function RootLayout({ children }: LayoutProps<'/'>) {
     >
       <body className="min-h-full flex flex-col bg-background text-foreground overflow-x-hidden">
         {children}
-        <Toaster richColors position="bottom-right" />
+        <Toaster richColors position="bottom-right" mobileOffset={{ bottom: 88, left: 12, right: 12 }} />
       </body>
     </html>
   );

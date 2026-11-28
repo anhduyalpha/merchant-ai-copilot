@@ -256,6 +256,7 @@ async function invokeGeminiGenerate(params: {
       systemInstruction: params.systemPrompt,
       responseMimeType: 'application/json',
       temperature: 0.1,
+      ...(model.includes('2.5-flash') ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
     },
   });
 
@@ -330,6 +331,83 @@ async function invokeAgnesChatCompletions(params: {
   return '';
 }
 
+function isProviderConfigured(provider: AIProviderName): boolean {
+  if (provider === 'gemini') return isRealValue(process.env.GEMINI_API_KEY);
+  if (provider === 'agnes') return isRealValue(process.env.AGNES_API_KEY);
+  return (
+    isRealValue(process.env.AWS_ACCESS_KEY_ID) &&
+    isRealValue(process.env.AWS_SECRET_ACCESS_KEY)
+  );
+}
+
+async function invokeProviderAndValidate<T>(params: {
+  provider: AIProviderName;
+  enrichedSystemPrompt: string;
+  userPrompt: string;
+  cleanBase64?: string;
+  imageMimeType: SupportedImageMimeType;
+  schema: z.ZodType<T>;
+}): Promise<T> {
+  const { provider, enrichedSystemPrompt, userPrompt, cleanBase64, imageMimeType, schema } = params;
+  let rawOutput: string;
+  try {
+    rawOutput =
+      provider === 'bedrock'
+        ? await invokeBedrockConverse({
+            systemPrompt: enrichedSystemPrompt,
+            userPrompt,
+            cleanBase64,
+            imageMimeType,
+          })
+        : provider === 'agnes'
+          ? await invokeAgnesChatCompletions({
+              systemPrompt: enrichedSystemPrompt,
+              userPrompt,
+              cleanBase64,
+              imageMimeType,
+            })
+          : await invokeGeminiGenerate({
+              systemPrompt: enrichedSystemPrompt,
+              userPrompt,
+              cleanBase64,
+              imageMimeType,
+            });
+  } catch (err) {
+    if (err instanceof AIProviderError) throw err;
+    throw new AIProviderError(
+      provider,
+      'UPSTREAM_ERROR',
+      err instanceof Error ? err.message : 'Upstream AI model invocation failed.',
+      { cause: err }
+    );
+  }
+
+  let parsedJson: unknown;
+  try {
+    const jsonCandidate = extractJsonString(rawOutput);
+    parsedJson = JSON.parse(jsonCandidate);
+  } catch (err) {
+    throw new AIProviderError(
+      provider,
+      'INVALID_JSON_OUTPUT',
+      'AI model response did not contain valid JSON.',
+      { cause: err }
+    );
+  }
+
+  const validation = schema.safeParse(parsedJson);
+  if (!validation.success) {
+    throw new AIProviderError(
+      provider,
+      'SCHEMA_VALIDATION_FAILED',
+      `AI JSON failed Zod schema validation: ${validation.error.message}`,
+      { cause: validation.error }
+    );
+  }
+
+  return validation.data;
+}
+
 /**
  * Unified multimodal structured JSON helper supporting AWS Bedrock (ConverseCommand),
  * Google Gemini (@google/genai), and Agnes AI (OpenAI-compatible), strictly validated against a Zod schema.
@@ -381,61 +459,50 @@ export async function generateStructuredJSON<T>(
   }
   const enrichedSystemPrompt = `${systemPrompt}${jsonSchemaHint}`;
 
-  let rawOutput: string;
-  try {
-    rawOutput =
-      provider === 'bedrock'
-        ? await invokeBedrockConverse({
-            systemPrompt: enrichedSystemPrompt,
-            userPrompt,
-            cleanBase64,
-            imageMimeType,
-          })
-        : provider === 'agnes'
-          ? await invokeAgnesChatCompletions({
-              systemPrompt: enrichedSystemPrompt,
-              userPrompt,
-              cleanBase64,
-              imageMimeType,
-            })
-          : await invokeGeminiGenerate({
-              systemPrompt: enrichedSystemPrompt,
-              userPrompt,
-              cleanBase64,
-              imageMimeType,
-            });
-  } catch (err) {
-    if (err instanceof AIProviderError) throw err;
-    throw new AIProviderError(
-      provider,
-      'UPSTREAM_ERROR',
-      err instanceof Error ? err.message : 'Upstream AI model invocation failed.',
-      { cause: err }
-    );
+  const candidates: AIProviderName[] = params.providerOverride
+    ? [provider]
+    : [
+        provider,
+        ...(['gemini', 'agnes', 'bedrock'] as const).filter(
+          (p) => p !== provider && isProviderConfigured(p)
+        ),
+      ];
+
+  let lastError: AIProviderError | null = null;
+  for (const candidate of candidates) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await invokeProviderAndValidate({
+          provider: candidate,
+          enrichedSystemPrompt,
+          userPrompt,
+          cleanBase64,
+          imageMimeType,
+          schema: params.schema,
+        });
+      } catch (err) {
+        const aiErr =
+          err instanceof AIProviderError
+            ? err
+            : new AIProviderError(
+                candidate,
+                'UPSTREAM_ERROR',
+                err instanceof Error ? err.message : 'Upstream AI model invocation failed.',
+                { cause: err }
+              );
+        lastError = aiErr;
+        if (aiErr.code === 'PROVIDER_NOT_CONFIGURED' || aiErr.code === 'INVALID_INPUT') {
+          break;
+        }
+        if (attempt === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 400));
+        }
+      }
+    }
   }
 
-  let parsedJson: unknown;
-  try {
-    const jsonCandidate = extractJsonString(rawOutput);
-    parsedJson = JSON.parse(jsonCandidate);
-  } catch (err) {
-    throw new AIProviderError(
-      provider,
-      'INVALID_JSON_OUTPUT',
-      'AI model response did not contain valid JSON.',
-      { cause: err }
-    );
-  }
-
-  const validation = params.schema.safeParse(parsedJson);
-  if (!validation.success) {
-    throw new AIProviderError(
-      provider,
-      'SCHEMA_VALIDATION_FAILED',
-      `AI JSON failed Zod schema validation: ${validation.error.message}`,
-      { cause: validation.error }
-    );
-  }
-
-  return validation.data;
+  throw (
+    lastError ??
+    new AIProviderError(provider, 'UPSTREAM_ERROR', 'Upstream AI model invocation failed.')
+  );
 }
