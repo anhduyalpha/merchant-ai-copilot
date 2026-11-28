@@ -21,7 +21,7 @@ interface OrderDetailModalProps {
   order: StoreOrderWithItems | null;
   receipts: PaymentReceiptRow[];
   onClose: () => void;
-  onOrderUpdated: () => Promise<void>;
+  onOrderUpdated: (orderId?: string, nextStatus?: 'paid' | 'cancelled') => void | Promise<void>;
   onProceedToReceiptVerify: (order: OrderRow) => void;
 }
 
@@ -77,7 +77,7 @@ export function OrderDetailModal({
           ? `Đã đánh dấu thu đủ đơn ${order.order_code}.`
           : `Đã hủy đơn ${order.order_code}.`
       );
-      await onOrderUpdated();
+      void onOrderUpdated(order.id, status);
       onClose();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Lỗi cập nhật đơn hàng.');

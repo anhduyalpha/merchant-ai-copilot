@@ -2,8 +2,8 @@ import type { SupportedImageMimeType } from '@/lib/ai/provider';
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5MB cap before client compression
 const ALLOWED_IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp']);
-const MAX_IMAGE_SIDE = 1400;
-const COMPRESS_THRESHOLD_BYTES = 900 * 1024; // 900KB
+const MAX_IMAGE_SIDE = 1150;
+const COMPRESS_THRESHOLD_BYTES = 350 * 1024; // 350KB
 
 /**
  * Fetches a static demo PNG/SVG/JPG asset or reads a File into compressed base64 + MIME type
@@ -83,7 +83,7 @@ async function compressImageDataUrlIfNeeded(
     ctx.fillRect(0, 0, width, height);
     ctx.drawImage(img, 0, 0, width, height);
 
-    const outDataUrl = canvas.toDataURL('image/jpeg', 0.84);
+    const outDataUrl = canvas.toDataURL('image/jpeg', 0.82);
     if (outDataUrl.length < dataUrl.length || maxDim > MAX_IMAGE_SIDE) {
       return { dataUrl: outDataUrl, mimeType: 'image/jpeg' };
     }

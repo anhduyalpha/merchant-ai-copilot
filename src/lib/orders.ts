@@ -1,7 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ParsedOrder, ParsedOrderItem } from '@/lib/ai/schemas';
+import {
+  adjustCachedMenuSoldCounts,
+  allocateNextOrderCodeFast,
+  getCachedMenuItems,
+  syncOrderCodeWatermark,
+} from '@/lib/store-cache';
 import { buildVietQRPayload } from '@/lib/vietqr';
 import type {
+  CustomerDebtRow,
   Database,
   MenuItemRow,
   OrderItemRow,
@@ -144,21 +151,7 @@ export function normalizeAndCalculateOrder(
 }
 
 export async function generateNextOrderCode(supabase: SupabaseClient<Database>): Promise<string> {
-  const { data } = await supabase
-    .from('orders')
-    .select('order_code')
-    .order('created_at', { ascending: false })
-    .limit(50);
-
-  let maxNum = 1000;
-  for (const row of (data ?? []) as Array<{ order_code: string }>) {
-    const match = /^DH(\d+)$/i.exec(row.order_code.trim());
-    if (match) {
-      const n = Number(match[1]);
-      if (Number.isFinite(n) && n > maxNum) maxNum = n;
-    }
-  }
-  return `DH${maxNum + 1}`;
+  return allocateNextOrderCodeFast(supabase, true);
 }
 
 export async function persistOrderToSupabase(
@@ -168,10 +161,12 @@ export async function persistOrderToSupabase(
     sourceType: OrderSourceType;
     rawInput: string | null;
     notes?: string | null;
+    menuItems?: MenuItemRow[];
   }
 ): Promise<{
   order: OrderRow;
   items: OrderItemRow[];
+  debt: CustomerDebtRow | null;
   vietqrUrl: string | null;
 }> {
   const { draft, sourceType, rawInput, notes } = params;
@@ -179,10 +174,8 @@ export async function persistOrderToSupabase(
   let order: OrderRow | null = null;
   let vietqrUrl: string | null = null;
 
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const baseCode = await generateNextOrderCode(supabase);
-    const num = Number(baseCode.replace(/^DH/i, '')) + attempt;
-    const orderCode = `DH${num}`;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const orderCode = await allocateNextOrderCodeFast(supabase, attempt > 0);
     const qrAmount =
       draft.paymentMethod === 'split'
         ? draft.transferAmountVnd
@@ -236,7 +229,20 @@ export async function persistOrderToSupabase(
     throw new Error('Could not allocate unique order_code after retries.');
   }
 
-  const { data: insertedItems, error: itemsErr } = await supabase
+  const qtyByMenuId = new Map<string, number>();
+  for (const item of draft.items) {
+    if (item.menuItemId) {
+      qtyByMenuId.set(item.menuItemId, (qtyByMenuId.get(item.menuItemId) ?? 0) + item.quantity);
+    }
+  }
+
+  const knownMenu =
+    qtyByMenuId.size > 0
+      ? (params.menuItems ?? (await getCachedMenuItems(supabase)))
+      : [];
+  const soldCountById = new Map(knownMenu.map((m) => [m.id, m.daily_sold_count]));
+
+  const itemsInsertPromise = supabase
     .from('order_items')
     .insert(
       draft.items.map((item) => ({
@@ -252,57 +258,57 @@ export async function persistOrderToSupabase(
     )
     .select('*');
 
-  if (itemsErr) {
-    throw new Error(itemsErr.message);
-  }
-
-  // Increment real-time daily_sold_count on matched menu items
-  const qtyByMenuId = new Map<string, number>();
-  for (const item of draft.items) {
-    if (item.menuItemId) {
-      qtyByMenuId.set(item.menuItemId, (qtyByMenuId.get(item.menuItemId) ?? 0) + item.quantity);
-    }
-  }
-  if (qtyByMenuId.size > 0) {
-    const { data: currentMenuRows } = await supabase
-      .from('menu_items')
-      .select('id, daily_sold_count')
-      .in('id', Array.from(qtyByMenuId.keys()));
-
-    for (const row of (currentMenuRows ?? []) as Array<{ id: string; daily_sold_count: number }>) {
-      const addQty = qtyByMenuId.get(row.id) ?? 0;
-      if (addQty > 0) {
-        await supabase
-          .from('menu_items')
-          .update({ daily_sold_count: Math.max(0, row.daily_sold_count + addQty) })
-          .eq('id', row.id);
-      }
-    }
-  }
-
-  if (draft.paymentMethod === 'debt') {
-    const debtQrPayload =
-      vietqrUrl ?? buildVietQRPayload({ amount: draft.totalVnd, addInfo: order.order_code });
-    const { error: debtErr } = await supabase.from('customer_debts').insert({
-      order_id: order.id,
-      order_code: order.order_code,
-      customer_name: draft.customerName || `${draft.tableOrChannel} (Khách quen)`,
-      customer_alias: draft.customerName,
-      channel_handle: draft.tableOrChannel || 'Tại quầy',
-      amount_due_vnd: draft.totalVnd,
-      due_date: new Date().toISOString().slice(0, 10),
-      status: 'unpaid',
-      vietqr_url: debtQrPayload,
-      notes: draft.items.map((i) => `${i.quantity} ${i.matchedItemName}`).join(' + '),
+  const menuUpdatePromises = Array.from(qtyByMenuId.entries())
+    .filter(([, addQty]) => addQty > 0)
+    .map(([menuId, addQty]) => {
+      const currentCount = soldCountById.get(menuId) ?? 0;
+      return supabase
+        .from('menu_items')
+        .update({ daily_sold_count: Math.max(0, currentCount + addQty) })
+        .eq('id', menuId);
     });
-    if (debtErr) {
-      throw new Error(debtErr.message);
-    }
+
+  const debtInsertPromise =
+    draft.paymentMethod === 'debt'
+      ? supabase
+          .from('customer_debts')
+          .insert({
+            order_id: order.id,
+            order_code: order.order_code,
+            customer_name: draft.customerName || `${draft.tableOrChannel} (Khách quen)`,
+            customer_alias: draft.customerName,
+            channel_handle: draft.tableOrChannel || 'Tại quầy',
+            amount_due_vnd: draft.totalVnd,
+            due_date: new Date().toISOString().slice(0, 10),
+            status: 'unpaid',
+            vietqr_url:
+              vietqrUrl ?? buildVietQRPayload({ amount: draft.totalVnd, addInfo: order.order_code }),
+            notes: draft.items.map((i) => `${i.quantity} ${i.matchedItemName}`).join(' + '),
+          })
+          .select('*')
+          .single()
+      : Promise.resolve({ data: null, error: null });
+
+  const [itemsRes, debtRes] = await Promise.all([
+    itemsInsertPromise,
+    debtInsertPromise,
+    ...menuUpdatePromises,
+  ]);
+
+  if (itemsRes.error) {
+    throw new Error(itemsRes.error.message);
   }
+  if (debtRes.error) {
+    throw new Error(debtRes.error.message);
+  }
+
+  adjustCachedMenuSoldCounts(qtyByMenuId);
+  syncOrderCodeWatermark([order.order_code]);
 
   return {
     order,
-    items: (insertedItems ?? []) as OrderItemRow[],
+    items: (itemsRes.data ?? []) as OrderItemRow[],
+    debt: (debtRes.data as CustomerDebtRow | null) ?? null,
     vietqrUrl,
   };
 }

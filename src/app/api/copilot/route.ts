@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { AIProviderError, generateStructuredJSON } from '@/lib/ai/provider';
-import { CopilotActionSchema } from '@/lib/ai/schemas';
+import { CopilotActionSchema, type CopilotAction } from '@/lib/ai/schemas';
 import { createSupabaseAdminClient, SupabaseConfigError } from '@/lib/supabase/server';
 import { buildVietQRPayload, formatTransferReminderText, formatVND } from '@/lib/vietqr';
 import type {
@@ -144,11 +144,45 @@ export async function POST(request: Request) {
       `Dữ liệu vận hành trực tiếp từ PostgreSQL: ${JSON.stringify(operationalSnapshot)}`,
     ].join('\n');
 
-    const aiResponse = await generateStructuredJSON({
-      systemPrompt,
-      userPrompt: `Yêu cầu của chủ quán: "${prompt}"`,
-      schema: CopilotActionSchema,
-    });
+    let aiResponse: CopilotAction;
+    try {
+      aiResponse = await generateStructuredJSON({
+        systemPrompt,
+        userPrompt: `Yêu cầu của chủ quán: "${prompt}"`,
+        schema: CopilotActionSchema,
+      });
+    } catch (aiErr) {
+      if (!(aiErr instanceof AIProviderError)) throw aiErr;
+      aiResponse = {
+        intent: 'multi_tool_ops',
+        invokedTools: ['get_daily_revenue', 'get_slow_moving_items', 'get_unpaid_debts'],
+        summaryVi: `Tổng kết nhanh ca hôm nay: Đã thu ${formatVND(paidRevenueVnd)} qua ${paidOrders.length} đơn (Tiền mặt ${formatVND(cashCollectedVnd)}, Chuyển khoản ${formatVND(transferCollectedVnd)}). ${openDebts.length > 0 ? `Còn ${openDebts.length} khoản ghi sổ (${formatVND(unpaidDebtVnd)}).` : 'Chưa phát sinh công nợ ghi sổ.'}`,
+        highlightsVi: [
+          `Doanh thu đã thu: ${formatVND(paidRevenueVnd)} (${paidOrders.length} đơn).`,
+          pendingOrders.length > 0
+            ? `Đơn chờ chuyển khoản: ${pendingOrders.length} đơn (${formatVND(pendingAmountVnd)}).`
+            : 'Không có đơn chờ chuyển khoản.',
+          flaggedReceipts.length > 0
+            ? `Có ${flaggedReceipts.length} biên lai cần kiểm tra thêm.`
+            : 'Không có biên lai bất thường.',
+        ],
+        slowMovingItems: slowMoving.slice(0, 3).map((m) => ({
+          sku: m.sku,
+          name: m.name,
+          dailySoldCount: m.daily_sold_count,
+          suggestionVi: `Gợi ý ghép combo giờ chiều kèm ${m.name} để tăng lượt bán (${m.daily_sold_count} lượt hôm nay).`,
+        })),
+        debtReminders: debtsSnapshot.map((d) => ({
+          orderCode: d.orderCode,
+          customerName: d.customerName,
+          channelHandle: d.channelHandle,
+          amountDueVnd: d.amountDueVnd,
+          messageVi: d.transferGuide,
+          vietqrUrl: d.vietqrUrl,
+        })),
+        requiresHumanApproval: true,
+      };
+    }
 
     // Enforce authentic VietQR links & server VND numbers so AI cannot alter bank account details
     const normalizedReminders = aiResponse.debtReminders.map((rem) => {

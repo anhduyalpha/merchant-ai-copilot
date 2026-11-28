@@ -1,6 +1,6 @@
 'use client';
 
-import { forwardRef, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, memo, useImperativeHandle, useRef, useState } from 'react';
 import {
   Check,
   CheckCircle2,
@@ -30,7 +30,7 @@ interface OperationsCopilotPanelProps {
   summary: StoreSummary | null;
   menuItems: MenuItemRow[];
   debts: CustomerDebtRow[];
-  onDebtSettled: () => Promise<void>;
+  onDebtSettled: (debtId?: string) => void | Promise<void>;
   onInspectOrderDetail: (orderIdOrCode: string) => void;
 }
 
@@ -69,10 +69,9 @@ function stripRawQrUrl(text: string): string {
     .trim();
 }
 
-export const OperationsCopilotPanel = forwardRef<
-  OperationsCopilotHandle,
-  OperationsCopilotPanelProps
->(function OperationsCopilotPanel({ summary, menuItems, debts, onDebtSettled, onInspectOrderDetail }, ref) {
+export const OperationsCopilotPanel = memo(
+  forwardRef<OperationsCopilotHandle, OperationsCopilotPanelProps>(
+    function OperationsCopilotPanel({ summary, menuItems, debts, onDebtSettled, onInspectOrderDetail }, ref) {
   const [prompt, setPrompt] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [settlingId, setSettlingId] = useState<string | null>(null);
@@ -147,7 +146,7 @@ export const OperationsCopilotPanel = forwardRef<
         throw new Error(data.message || 'Không thể xác nhận đã thu.');
       }
       toast.success(`Đã xác nhận thu đủ đơn ${orderCode}.`);
-      await onDebtSettled();
+      void onDebtSettled(debtId);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Lỗi cập nhật sổ nợ.');
     } finally {
@@ -649,4 +648,5 @@ export const OperationsCopilotPanel = forwardRef<
       </div>
     </div>
   );
-});
+})
+);

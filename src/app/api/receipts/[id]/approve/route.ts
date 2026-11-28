@@ -75,7 +75,7 @@ export async function POST(
       );
     }
 
-    const { data: updatedReceipt, error: updateErr } = await supabase
+    const receiptUpdatePromise = supabase
       .from('payment_receipts')
       .update({
         verdict: nextVerdict,
@@ -86,24 +86,38 @@ export async function POST(
       .select('*')
       .single();
 
-    if (updateErr || !updatedReceipt) {
-      return NextResponse.json(
-        { ok: false, error: 'UPDATE_FAILED', message: 'Không thể cập nhật trạng thái biên lai.' },
-        { status: 500 }
-      );
-    }
-
+    let updatedReceipt: PaymentReceiptRow | null = null;
     let orderStatus: OrderRow['status'] | null = null;
-    if (receiptRow.order_id) {
-      if (action === 'approve') {
-        const { data: updatedOrder } = await supabase
+
+    if (receiptRow.order_id && action === 'approve') {
+      const [receiptRes, orderRes] = await Promise.all([
+        receiptUpdatePromise,
+        supabase
           .from('orders')
           .update({ status: 'paid' })
           .eq('id', receiptRow.order_id)
           .select('status')
-          .maybeSingle();
-        orderStatus = (updatedOrder as { status: OrderRow['status'] } | null)?.status ?? 'paid';
-      } else {
+          .maybeSingle(),
+      ]);
+      if (receiptRes.error || !receiptRes.data) {
+        return NextResponse.json(
+          { ok: false, error: 'UPDATE_FAILED', message: 'Không thể cập nhật trạng thái biên lai.' },
+          { status: 500 }
+        );
+      }
+      updatedReceipt = receiptRes.data as PaymentReceiptRow;
+      orderStatus = (orderRes.data as { status: OrderRow['status'] } | null)?.status ?? 'paid';
+    } else {
+      const { data, error: updateErr } = await receiptUpdatePromise;
+      if (updateErr || !data) {
+        return NextResponse.json(
+          { ok: false, error: 'UPDATE_FAILED', message: 'Không thể cập nhật trạng thái biên lai.' },
+          { status: 500 }
+        );
+      }
+      updatedReceipt = data as PaymentReceiptRow;
+
+      if (receiptRow.order_id) {
         const { data: currentOrder } = await supabase
           .from('orders')
           .select('status, notes')

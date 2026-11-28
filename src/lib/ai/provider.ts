@@ -49,6 +49,61 @@ export class AIProviderError extends Error {
 
 const SECRET_PLACEHOLDERS = ['your-gemini-', 'your-aws-', 'your-agnes-', 'placeholder', 'changeme'];
 const MAX_BASE64_LENGTH = 14_000_000; // ~10 MB binary image cap
+const PROVIDER_COOLDOWN_MS = 60_000;
+const RATE_LIMIT_OR_AUTH_REGEX =
+  /\b(429|resource_exhausted|quota|rate.?limit|too many requests|401|403|invalid api key|unauthenticated)\b/i;
+
+let cachedBedrockClient: { key: string; client: BedrockRuntimeClient } | null = null;
+let cachedGeminiClient: { key: string; client: GoogleGenAI } | null = null;
+const jsonSchemaHintCache = new WeakMap<z.ZodType, string>();
+const providerCooldownUntil = new Map<AIProviderName, number>();
+
+function getBedrockClient(params: {
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  sessionToken?: string;
+}): BedrockRuntimeClient {
+  const key = `${params.region}::${params.accessKeyId}::${params.secretAccessKey}::${params.sessionToken ?? ''}`;
+  if (cachedBedrockClient && cachedBedrockClient.key === key) {
+    return cachedBedrockClient.client;
+  }
+  const client = new BedrockRuntimeClient({
+    region: params.region,
+    credentials: {
+      accessKeyId: params.accessKeyId,
+      secretAccessKey: params.secretAccessKey,
+      ...(params.sessionToken ? { sessionToken: params.sessionToken } : {}),
+    },
+  });
+  cachedBedrockClient = { key, client };
+  return client;
+}
+
+function getGeminiClient(apiKey: string, useEnterprise: boolean): GoogleGenAI {
+  const key = `${apiKey}::${useEnterprise}`;
+  if (cachedGeminiClient && cachedGeminiClient.key === key) {
+    return cachedGeminiClient.client;
+  }
+  const client = new GoogleGenAI(
+    useEnterprise ? { enterprise: true, apiKey } : { apiKey, apiVersion: 'v1beta' }
+  );
+  cachedGeminiClient = { key, client };
+  return client;
+}
+
+function getJsonSchemaHint(schema: z.ZodType): string {
+  const cached = jsonSchemaHintCache.get(schema);
+  if (cached !== undefined) return cached;
+  let hint = '';
+  try {
+    hint = `\n\nSTRICT JSON OUTPUT SCHEMA (return ONLY a valid JSON object matching every required key and enum):\n${JSON.stringify(z.toJSONSchema(schema, { unrepresentable: 'any' }))}`;
+  } catch {
+    hint = '';
+  }
+  jsonSchemaHintCache.set(schema, hint);
+  return hint;
+}
 
 function isRealValue(value: string | undefined): boolean {
   if (!value) return false;
@@ -176,14 +231,7 @@ async function invokeBedrockConverse(params: {
     );
   }
 
-  const client = new BedrockRuntimeClient({
-    region,
-    credentials: {
-      accessKeyId,
-      secretAccessKey,
-      ...(sessionToken ? { sessionToken } : {}),
-    },
-  });
+  const client = getBedrockClient({ region, accessKeyId, secretAccessKey, sessionToken });
 
   const content: ContentBlock[] = [];
   if (params.cleanBase64) {
@@ -233,9 +281,7 @@ async function invokeGeminiGenerate(params: {
   }
 
   const useEnterprise = process.env.GEMINI_USE_VERTEX?.trim().toLowerCase() === 'true';
-  const ai = new GoogleGenAI(
-    useEnterprise ? { enterprise: true, apiKey } : { apiKey, apiVersion: 'v1beta' }
-  );
+  const ai = getGeminiClient(apiKey, useEnterprise);
   const model = process.env.GEMINI_MODEL_ID?.trim() || 'gemini-2.5-flash';
 
   const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [];
@@ -396,7 +442,8 @@ async function invokeProviderAndValidate<T>(params: {
               cleanBase64,
               imageMimeType,
             });
-    rawOutput = await withTimeout(callPromise, 20_000, provider);
+    const timeoutMs = cleanBase64 ? 18_000 : 10_000;
+    rawOutput = await withTimeout(callPromise, timeoutMs, provider);
   } catch (err) {
     if (err instanceof AIProviderError) throw err;
     throw new AIProviderError(
@@ -476,15 +523,10 @@ export async function generateStructuredJSON<T>(
     }
   }
 
-  let jsonSchemaHint = '';
-  try {
-    jsonSchemaHint = `\n\nSTRICT JSON OUTPUT SCHEMA (return ONLY a valid JSON object matching every required key and enum):\n${JSON.stringify(z.toJSONSchema(params.schema, { unrepresentable: 'any' }))}`;
-  } catch {
-    jsonSchemaHint = '';
-  }
+  const jsonSchemaHint = getJsonSchemaHint(params.schema);
   const enrichedSystemPrompt = `${systemPrompt}${jsonSchemaHint}`;
 
-  const candidates: AIProviderName[] = params.providerOverride
+  const rawCandidates: AIProviderName[] = params.providerOverride
     ? [provider]
     : [
         provider,
@@ -492,6 +534,16 @@ export async function generateStructuredJSON<T>(
           (p) => p !== provider && isProviderConfigured(p)
         ),
       ];
+
+  const now = Date.now();
+  const candidates = rawCandidates.filter((p) => (providerCooldownUntil.get(p) ?? 0) <= now);
+  if (candidates.length === 0) {
+    throw new AIProviderError(
+      provider,
+      'UPSTREAM_ERROR',
+      'AI provider temporarily rate-limited (cooldown active).'
+    );
+  }
 
   let lastError: AIProviderError | null = null;
   for (const candidate of candidates) {
@@ -517,6 +569,10 @@ export async function generateStructuredJSON<T>(
               );
         lastError = aiErr;
         if (aiErr.code === 'PROVIDER_NOT_CONFIGURED' || aiErr.code === 'INVALID_INPUT') {
+          break;
+        }
+        if (RATE_LIMIT_OR_AUTH_REGEX.test(aiErr.message)) {
+          providerCooldownUntil.set(candidate, Date.now() + PROVIDER_COOLDOWN_MS);
           break;
         }
         if (attempt < 2) {

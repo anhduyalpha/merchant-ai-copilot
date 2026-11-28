@@ -41,29 +41,27 @@ export async function POST(
       );
     }
 
-    const { data: updatedDebt, error: updateErr } = await supabase
-      .from('customer_debts')
-      .update({ status: 'settled' })
-      .eq('id', id)
-      .select('*')
-      .single();
+    const [debtRes] = await Promise.all([
+      supabase
+        .from('customer_debts')
+        .update({ status: 'settled' })
+        .eq('id', id)
+        .select('*')
+        .single(),
+      existing.order_id
+        ? supabase.from('orders').update({ status: 'paid' }).eq('id', existing.order_id)
+        : Promise.resolve({ error: null }),
+    ]);
 
-    if (updateErr || !updatedDebt) {
+    if (debtRes.error || !debtRes.data) {
       return NextResponse.json(
         { ok: false, error: 'SETTLE_FAILED', message: 'Không thể tất toán khoản công nợ.' },
         { status: 500 }
       );
     }
 
-    if (existing.order_id) {
-      await supabase
-        .from('orders')
-        .update({ status: 'paid' })
-        .eq('id', existing.order_id);
-    }
-
     return NextResponse.json(
-      { ok: true, debt: updatedDebt as CustomerDebtRow },
+      { ok: true, debt: debtRes.data as CustomerDebtRow },
       { status: 200 }
     );
   } catch (err) {

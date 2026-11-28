@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { buildSyntheticSeedDataset } from '@/lib/demo-presets';
+import { invalidateStoreCache, setCachedMenuItems } from '@/lib/store-cache';
 import { createSupabaseAdminClient, getSupabaseEnvStatus } from '@/lib/supabase/server';
+import type { MenuItemRow } from '@/types/database';
 
 const MAX_BODY_BYTES = 4096;
 
@@ -70,7 +72,10 @@ async function executeAtomicDemoReset(): Promise<ResetResult> {
     }
   }
 
-  const { error: menuError } = await supabase.from('menu_items').insert(dataset.menuItems);
+  const { data: insertedMenu, error: menuError } = await supabase
+    .from('menu_items')
+    .insert(dataset.menuItems)
+    .select('*');
   if (menuError) {
     return {
       ok: false,
@@ -80,6 +85,10 @@ async function executeAtomicDemoReset(): Promise<ResetResult> {
       seededCounts,
       resetAt: new Date().toISOString(),
     };
+  }
+  invalidateStoreCache(1000);
+  if (insertedMenu) {
+    setCachedMenuItems(insertedMenu as MenuItemRow[]);
   }
 
   if (dataset.orders.length > 0) {

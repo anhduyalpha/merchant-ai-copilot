@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   detectOrderContradictions,
   parseVietnameseOrderFallback,
+  tryInstantMenuOrderParse,
 } from '@/lib/ai/local-order-parser';
 import { AIProviderError, generateStructuredJSON } from '@/lib/ai/provider';
 import { ParsedOrderSchema, type ParsedOrder } from '@/lib/ai/schemas';
@@ -11,9 +12,9 @@ import {
   persistOrderToSupabase,
   sanitizeImageMimeType,
 } from '@/lib/orders';
+import { getCachedMenuItems } from '@/lib/store-cache';
 import { createSupabaseAdminClient, SupabaseConfigError } from '@/lib/supabase/server';
 import { buildVietQRPayload, formatVND } from '@/lib/vietqr';
-import type { MenuItemRow } from '@/types/database';
 
 const ParseOrderRequestSchema = z.object({
   inputType: z.enum(['chat', 'handwritten', 'voice']),
@@ -76,63 +77,60 @@ export async function POST(request: Request) {
 
   try {
     const supabase = createSupabaseAdminClient();
-    const { data: menuData, error: menuErr } = await supabase
-      .from('menu_items')
-      .select('*')
-      .eq('is_available', true);
+    const allMenuItems = await getCachedMenuItems(supabase);
+    const menuItems = allMenuItems.filter((m) => m.is_available);
 
-    if (menuErr) {
-      return NextResponse.json(
-        { ok: false, error: 'DB_ERROR', message: 'Không tải được thực đơn từ Supabase.' },
-        { status: 500 }
-      );
-    }
-
-    const menuItems = (menuData ?? []) as MenuItemRow[];
-    const menuCatalogJson = JSON.stringify(
-      menuItems.map((m) => ({
-        sku: m.sku,
-        name: m.name,
-        price_vnd: m.price_vnd,
-        aliases: m.aliases,
-      }))
-    );
-
-    const systemPrompt = [
-      'Bạn là trợ lý nhận đơn POS tiếng Việt cho quán cà phê "Tiệm Cà Phê Mộc".',
-      'Hãy đối chiếu tin nhắn tiếng lóng/sai chính tả, giọng nói hoặc ảnh giấy ghi tay với thực đơn dưới đây.',
-      'Quy tắc bắt buộc:',
-      '- Tự sửa lỗi chính tả tiếng Việt phổ biến (vd: "ít đã" -> "ít đá", "ko"/"k" -> "không", "cf"/"cfs" -> Cà phê sữa đá, "bx" -> Bạc xỉu đá, "bmq" -> Bánh mì que).',
-      '- Nếu có món khớp thực đơn: điền đúng `sku`, `matchedItemName`, `unitPriceVnd`, `isUnmatched: false`.',
-      '- Nếu khách gọi món KHÔNG có trong thực đơn (vd: "2 trà chanh"): vẫn giữ món đó trong `items` với `sku: null`, `unitPriceVnd: 0`, `isUnmatched: true` để thu ngân tự nhập giá hoặc đổi món.',
-      '- Nếu có MÂU THUẪN hợp lý (vd: "cf sữa không có sữa", "trà đào không đào"): KHÔNG được lỗi, hãy chọn món gần nhất và thêm lời nhắc rõ ràng vào `warnings` (vd: "Khách gọi Cà phê sữa nhưng ghi không có sữa — cân nhắc đổi sang Cà phê đen đá hoặc hỏi lại khách").',
-      '- Nếu tin nhắn KHÔNG chứa món ăn nào (vd: "alo quán ơi", "???", "cảm ơn"): trả về `items: []` và ghi giải thích ngắn vào `warnings`.',
-      '- Tách món trả tiền mặt ("tách 1 trà đào tính tiền mặt") -> `paymentSplitTag: "cash"`, `paymentMethod: "split"`. Ghi sổ ("ghi sổ", "cuối ngày chuyển") -> `paymentMethod: "debt"`. Giảm giá ("giảm 5k", "giảm 10k") -> `discountVnd` nguyên đồng.',
-      '- Mọi số tiền là số nguyên VND không dấu phẩy. Số lượng nằm trong [1, 9999].',
-      `Thực đơn hiện có: ${menuCatalogJson}`,
-    ].join('\n');
-
-    const userPrompt = hasImage
-      ? `Loại đầu vào: ${inputType}. Đọc toàn bộ món, số lượng, ghi chú, giảm giá và phương thức thanh toán từ ảnh đơn viết tay.${cleanText ? ` Ghi chú thêm: ${cleanText}` : ''}`
-      : `Loại đầu vào: ${inputType}. Phân tích đơn hàng sau thành JSON chuẩn:\n"${cleanText}"`;
+    const instantParsed =
+      !hasImage && cleanText ? tryInstantMenuOrderParse(cleanText, menuItems) : null;
 
     let aiParsed: ParsedOrder;
     let fallbackUsed = false;
 
-    try {
-      aiParsed = await generateStructuredJSON({
-        systemPrompt,
-        userPrompt,
-        imageBase64: hasImage ? imageBase64 : undefined,
-        imageMimeType: hasImage ? sanitizeImageMimeType(imageMimeType) : undefined,
-        schema: ParsedOrderSchema,
-      });
-    } catch (aiErr) {
-      if (aiErr instanceof AIProviderError && !hasImage && cleanText) {
-        aiParsed = parseVietnameseOrderFallback(cleanText, menuItems);
-        fallbackUsed = true;
-      } else {
-        throw aiErr;
+    if (instantParsed) {
+      aiParsed = instantParsed;
+    } else {
+      const menuCatalogJson = JSON.stringify(
+        menuItems.map((m) => ({
+          sku: m.sku,
+          name: m.name,
+          price_vnd: m.price_vnd,
+          aliases: m.aliases,
+        }))
+      );
+
+      const systemPrompt = [
+        'Bạn là trợ lý nhận đơn POS tiếng Việt cho quán cà phê "Tiệm Cà Phê Mộc".',
+        'Hãy đối chiếu tin nhắn tiếng lóng/sai chính tả, giọng nói hoặc ảnh giấy ghi tay với thực đơn dưới đây.',
+        'Quy tắc bắt buộc:',
+        '- Tự sửa lỗi chính tả tiếng Việt phổ biến (vd: "ít đã" -> "ít đá", "ko"/"k" -> "không", "cf"/"cfs" -> Cà phê sữa đá, "bx" -> Bạc xỉu đá, "bmq" -> Bánh mì que).',
+        '- Nếu có món khớp thực đơn: điền đúng `sku`, `matchedItemName`, `unitPriceVnd`, `isUnmatched: false`.',
+        '- Nếu khách gọi món KHÔNG có trong thực đơn (vd: "2 trà chanh"): vẫn giữ món đó trong `items` với `sku: null`, `unitPriceVnd: 0`, `isUnmatched: true` để thu ngân tự nhập giá hoặc đổi món.',
+        '- Nếu có MÂU THUẪN hợp lý (vd: "cf sữa không có sữa", "trà đào không đào"): KHÔNG được lỗi, hãy chọn món gần nhất và thêm lời nhắc rõ ràng vào `warnings` (vd: "Khách gọi Cà phê sữa nhưng ghi không có sữa — cân nhắc đổi sang Cà phê đen đá hoặc hỏi lại khách").',
+        '- Nếu tin nhắn KHÔNG chứa món ăn nào (vd: "alo quán ơi", "???", "cảm ơn"): trả về `items: []` và ghi giải thích ngắn vào `warnings`.',
+        '- Tách món trả tiền mặt ("tách 1 trà đào tính tiền mặt") -> `paymentSplitTag: "cash"`, `paymentMethod: "split"`. Ghi sổ ("ghi sổ", "cuối ngày chuyển") -> `paymentMethod: "debt"`. Giảm giá ("giảm 5k", "giảm 10k") -> `discountVnd` nguyên đồng.',
+        '- Mọi số tiền là số nguyên VND không dấu phẩy. Số lượng nằm trong [1, 9999].',
+        `Thực đơn hiện có: ${menuCatalogJson}`,
+      ].join('\n');
+
+      const userPrompt = hasImage
+        ? `Loại đầu vào: ${inputType}. Đọc toàn bộ món, số lượng, ghi chú, giảm giá và phương thức thanh toán từ ảnh đơn viết tay.${cleanText ? ` Ghi chú thêm: ${cleanText}` : ''}`
+        : `Loại đầu vào: ${inputType}. Phân tích đơn hàng sau thành JSON chuẩn:\n"${cleanText}"`;
+
+      try {
+        aiParsed = await generateStructuredJSON({
+          systemPrompt,
+          userPrompt,
+          imageBase64: hasImage ? imageBase64 : undefined,
+          imageMimeType: hasImage ? sanitizeImageMimeType(imageMimeType) : undefined,
+          schema: ParsedOrderSchema,
+        });
+      } catch (aiErr) {
+        if (aiErr instanceof AIProviderError && !hasImage && cleanText) {
+          aiParsed = parseVietnameseOrderFallback(cleanText, menuItems);
+          fallbackUsed = true;
+        } else {
+          throw aiErr;
+        }
       }
     }
 
@@ -194,6 +192,7 @@ export async function POST(request: Request) {
         draft: normalized,
         sourceType: inputType,
         rawInput: cleanText || '[Ảnh giấy ghi tay]',
+        menuItems: allMenuItems,
       });
       return NextResponse.json(
         {

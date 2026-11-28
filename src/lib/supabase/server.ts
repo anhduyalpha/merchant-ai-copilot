@@ -50,9 +50,11 @@ export function getSupabaseEnvStatus(): SupabaseEnvStatus {
   };
 }
 
+let cachedAdminClient: { key: string; client: SupabaseClient<Database> } | null = null;
+
 /**
  * Server-only Supabase admin client authenticated with SUPABASE_SERVICE_ROLE_KEY.
- * Validated lazily at call time so `next build` succeeds before runtime secrets are populated.
+ * Validated lazily at call time and reused across requests for keep-alive performance.
  */
 export function createSupabaseAdminClient(): SupabaseClient<Database> {
   if (typeof window !== 'undefined') {
@@ -70,11 +72,18 @@ export function createSupabaseAdminClient(): SupabaseClient<Database> {
     );
   }
 
-  return createClient<Database>(url, serviceRoleKey, {
+  const cacheKey = `${url}::${serviceRoleKey}`;
+  if (cachedAdminClient && cachedAdminClient.key === cacheKey) {
+    return cachedAdminClient.client;
+  }
+
+  const client = createClient<Database>(url, serviceRoleKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
       detectSessionInUrl: false,
     },
   });
+  cachedAdminClient = { key: cacheKey, client };
+  return client;
 }

@@ -72,6 +72,70 @@ const MODIFIER_PATTERNS: RegExp[] = [
   /mang về/gi,
 ];
 
+const CUSTOMER_NAME_STOPWORDS = new Set([
+  'quen',
+  'le',
+  'lẻ',
+  'oi',
+  'ơi',
+  'nha',
+  'nhe',
+  'nhé',
+  'a',
+  'ạ',
+  'dat',
+  'đặt',
+  'them',
+  'thêm',
+  'goi',
+  'gọi',
+  'minh',
+  'mình',
+  'ho',
+  'hộ',
+  'gium',
+  'giùm',
+  'cho',
+  'uong',
+  'uống',
+  'an',
+  'ăn',
+  'ly',
+  'coc',
+  'cốc',
+  'phan',
+  'phần',
+  'ghi',
+  'so',
+  'sổ',
+  'no',
+  'nợ',
+  'chuyen',
+  'chuyển',
+  'tien',
+  'tiền',
+  'mat',
+  'mặt',
+]);
+
+function extractCustomerName(clean: string): { customerName: string | null; matchedPhrase: string | null } {
+  const regex =
+    /\b(?:khách\s+quen|khách|anh|chị|bạn|cô|chú|em)\s+([A-ZÀ-Ỹa-zà-ỹ0-9]+(?:\s+[A-ZÀ-Ỹa-zà-ỹ0-9]+){0,2})/gi;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(clean)) !== null) {
+    const words = match[1]
+      .split(/\s+/)
+      .filter((w) => w.length > 0 && !CUSTOMER_NAME_STOPWORDS.has(w.toLowerCase()));
+    if (words.length > 0) {
+      const candidate = words.slice(0, 2).join(' ');
+      if (!/^\d+$/.test(candidate)) {
+        return { customerName: candidate, matchedPhrase: match[0] };
+      }
+    }
+  }
+  return { customerName: null, matchedPhrase: null };
+}
+
 /**
  * Deterministic Vietnamese POS order parser fallback when external AI hits 429/503/timeout.
  */
@@ -88,6 +152,8 @@ export function parseVietnameseOrderFallback(
     tableOrChannel = tableMatch[1].replace(/\s+/g, ' ').trim();
     tableOrChannel = tableOrChannel.charAt(0).toUpperCase() + tableOrChannel.slice(1);
   }
+
+  const { customerName } = extractCustomerName(clean);
 
   let discountVnd = 0;
   let discountReason: string | null = null;
@@ -200,7 +266,7 @@ export function parseVietnameseOrderFallback(
 
   return {
     tableOrChannel,
-    customerName: null,
+    customerName,
     items,
     subtotalVnd,
     discountVnd: clampedDiscount,
@@ -212,5 +278,73 @@ export function parseVietnameseOrderFallback(
     unmatchedNotes: [],
     warnings,
     confidence: items.length > 0 ? 0.85 : 0.2,
+  };
+}
+
+const INSTANT_NOISE_REGEX =
+  /\b(bàn\s*\d+|mang về|zalo|facebook|fb|giảm\s+\d+\s*k|khách quen|khách|anh|chị|bạn|cô|chú|em|tiền mặt|trả mặt|tính tiền mặt|tính tiền|tách riêng|tách|chia tiền|ghi sổ|cuối ngày chuyển|ghi nợ|nợ|quán ơi|nha quán ơi|quán|ơi|nha|nhé|ạ|thêm|đặt|gọi|cho|lấy|với|và|riêng|ly|cốc|phần|ổ|cái|tô|bên|lên đơn)\b/gi;
+
+/**
+ * Fast <1ms deterministic parse path for unambiguous Vietnamese POS text orders.
+ * Returns null whenever any unknown food terms, contradictions, or ambiguity remain
+ * so complex orders still route through external LLM.
+ */
+export function tryInstantMenuOrderParse(
+  rawInput: string,
+  menuItems: MenuItemRow[]
+): ParsedOrder | null {
+  const clean = normalizeSlangText(rawInput);
+  if (!clean || clean.length > 240) return null;
+
+  const parsed = parseVietnameseOrderFallback(clean, menuItems);
+  if (
+    parsed.items.length === 0 ||
+    parsed.items.some((i) => i.isUnmatched) ||
+    parsed.warnings.length > 0
+  ) {
+    return null;
+  }
+  if (parsed.paymentMethod === 'debt' && !parsed.customerName) {
+    return null;
+  }
+
+  let leftover = clean.toLowerCase();
+  const { matchedPhrase } = extractCustomerName(clean);
+  if (matchedPhrase) {
+    leftover = leftover.replace(matchedPhrase.toLowerCase(), ' ');
+  }
+
+  const aliasList: string[] = [];
+  for (const m of menuItems) {
+    if (!m.is_available) continue;
+    aliasList.push(m.name.toLowerCase());
+    for (const a of m.aliases) {
+      const aClean = a.trim().toLowerCase();
+      if (aClean) aliasList.push(aClean);
+    }
+  }
+  aliasList.sort((a, b) => b.length - a.length);
+
+  for (const alias of aliasList) {
+    const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    leftover = leftover.replace(new RegExp(`(?:^|\\s|\\d)${escaped}(?=$|\\s|[.,!?])`, 'gi'), ' ');
+  }
+  for (const mp of MODIFIER_PATTERNS) {
+    leftover = leftover.replace(mp, ' ');
+  }
+  leftover = leftover
+    .replace(INSTANT_NOISE_REGEX, ' ')
+    .replace(/\b\d+\b/g, ' ')
+    .replace(/[.,!?;:/\-()\[\]"'₫]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (leftover.length > 0) {
+    return null;
+  }
+
+  return {
+    ...parsed,
+    confidence: 0.96,
   };
 }

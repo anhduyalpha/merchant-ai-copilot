@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { ParsedOrderSchema } from '@/lib/ai/schemas';
 import { normalizeAndCalculateOrder, persistOrderToSupabase } from '@/lib/orders';
+import { getCachedMenuItems } from '@/lib/store-cache';
 import { createSupabaseAdminClient, SupabaseConfigError } from '@/lib/supabase/server';
-import type { MenuItemRow } from '@/types/database';
 
 const CreateOrderSchema = ParsedOrderSchema.extend({
   sourceType: z.enum(['chat', 'handwritten', 'voice', 'manual']).optional().default('manual'),
@@ -57,15 +57,7 @@ export async function POST(request: Request) {
 
   try {
     const supabase = createSupabaseAdminClient();
-    const { data: menuData, error: menuErr } = await supabase.from('menu_items').select('*');
-    if (menuErr) {
-      return NextResponse.json(
-        { ok: false, error: 'DB_ERROR', message: 'Không đọc được thực đơn từ Supabase.' },
-        { status: 500 }
-      );
-    }
-
-    const menuItems = (menuData ?? []) as MenuItemRow[];
+    const menuItems = await getCachedMenuItems(supabase);
     const draft = normalizeAndCalculateOrder(validated.data, menuItems);
 
     draft.tableOrChannel = sanitizePlainText(draft.tableOrChannel, 60) ?? 'Tại quầy';
@@ -120,6 +112,7 @@ export async function POST(request: Request) {
       sourceType: validated.data.sourceType,
       rawInput: sanitizePlainText(validated.data.rawInput, 2000),
       notes: sanitizePlainText(validated.data.notes, 500),
+      menuItems,
     });
 
     return NextResponse.json(
@@ -127,6 +120,7 @@ export async function POST(request: Request) {
         ok: true,
         order: persisted.order,
         items: persisted.items,
+        debt: persisted.debt,
         vietqrUrl: persisted.vietqrUrl,
       },
       { status: 201 }

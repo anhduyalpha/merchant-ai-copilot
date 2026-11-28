@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import {
   forwardRef,
+  memo,
   useImperativeHandle,
   useRef,
   useState,
@@ -67,7 +68,7 @@ interface ReceiptFraudInspectorProps {
   paymentReceipts: PaymentReceiptRow[];
   selectedOrderId: string | null;
   onSelectOrderId: (id: string) => void;
-  onVerificationUpdated: () => Promise<void>;
+  onVerificationUpdated: () => void | Promise<void>;
   onInspectOrderDetail: (orderId: string) => void;
 }
 
@@ -140,10 +141,9 @@ function buildDossierFromHistoryRow(receipt: PaymentReceiptRow): VerifyResponseP
   };
 }
 
-export const ReceiptFraudInspector = forwardRef<
-  ReceiptFraudInspectorHandle,
-  ReceiptFraudInspectorProps
->(function ReceiptFraudInspector(
+export const ReceiptFraudInspector = memo(
+  forwardRef<ReceiptFraudInspectorHandle, ReceiptFraudInspectorProps>(
+    function ReceiptFraudInspector(
   {
     orders,
     paymentReceipts,
@@ -235,7 +235,7 @@ export const ReceiptFraudInspector = forwardRef<
       }
 
       setInspectedHistoryId(payload.receipt.id);
-      await onVerificationUpdated();
+      void onVerificationUpdated();
 
       if (payload.alreadyPaidWarningVi) {
         toast.warning(payload.alreadyPaidWarningVi);
@@ -359,7 +359,7 @@ export const ReceiptFraudInspector = forwardRef<
           receipt: data.receipt as PaymentReceiptRow,
         });
       }
-      await onVerificationUpdated();
+      void onVerificationUpdated();
       toast.success(
         action === 'approve'
           ? 'Đã xác nhận nhận tiền cho đơn hàng.'
@@ -843,7 +843,8 @@ export const ReceiptFraudInspector = forwardRef<
       </div>
     </div>
   );
-});
+})
+);
 
 function cleanMerchantCopySafe(text: string): string {
   return text.replace(/Quán Cà Phê Demo/gi, 'Tiệm Cà Phê Mộc').replace(/\(Synthetic Demo\)/gi, '').trim();

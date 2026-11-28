@@ -23,7 +23,13 @@ import {
   type ReceiptFraudInspectorHandle,
 } from '@/components/receipt/ReceiptFraudInspector';
 import { formatVND } from '@/lib/vietqr';
-import type { CustomerDebtRow, MenuItemRow, PaymentReceiptRow } from '@/types/database';
+import type {
+  CustomerDebtRow,
+  MenuItemRow,
+  OrderItemRow,
+  OrderRow,
+  PaymentReceiptRow,
+} from '@/types/database';
 
 interface HealthSnapshot {
   status: string;
@@ -61,8 +67,40 @@ interface StoreStateSnapshot {
 
 type WorkspaceTab = 'pos' | 'receipt' | 'copilot';
 
+function recomputeSummary(
+  orders: StoreOrderWithItems[],
+  paymentReceipts: PaymentReceiptRow[],
+  customerDebts: CustomerDebtRow[]
+): StoreSummary {
+  const paidOrders = orders.filter((o) => o.status === 'paid');
+  const pendingOrderCount = orders.filter((o) => o.status === 'pending_payment').length;
+  const debtOrderCount = orders.filter((o) => o.status === 'debt').length;
+  const openDebts = customerDebts.filter((d) => d.status !== 'settled');
+  const flaggedReceiptCount = paymentReceipts.filter(
+    (r) => r.risk_level === 'high' || r.verdict === 'rejected'
+  ).length;
+
+  return {
+    totalOrders: orders.length,
+    paidOrderCount: paidOrders.length,
+    pendingOrderCount,
+    debtOrderCount,
+    paidRevenueVnd: paidOrders.reduce((sum, o) => sum + o.total_vnd, 0),
+    cashCollectedVnd: paidOrders.reduce((sum, o) => sum + o.cash_amount_vnd, 0),
+    transferCollectedVnd: paidOrders.reduce((sum, o) => sum + o.transfer_amount_vnd, 0),
+    unpaidDebtVnd: openDebts.reduce((sum, d) => sum + d.amount_due_vnd, 0),
+    unpaidDebtCount: openDebts.length,
+    flaggedReceiptCount,
+  };
+}
+
 export function MerchantWorkspace() {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('pos');
+  const [visitedTabs, setVisitedTabs] = useState<Record<WorkspaceTab, boolean>>({
+    pos: true,
+    receipt: false,
+    copilot: false,
+  });
   const [health, setHealth] = useState<HealthSnapshot | null>(null);
   const [storeState, setStoreState] = useState<StoreStateSnapshot | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -75,61 +113,225 @@ export function MerchantWorkspace() {
   const receiptPanelRef = useRef<ReceiptFraudInspectorHandle>(null);
   const copilotPanelRef = useRef<OperationsCopilotHandle>(null);
   const statusMenuRef = useRef<HTMLDivElement>(null);
+  const refreshSeqRef = useRef(0);
 
-  const loadWorkspaceData = useCallback(async () => {
+  const switchTab = useCallback((tab: WorkspaceTab) => {
+    setActiveTab(tab);
+    setVisitedTabs((prev) => (prev[tab] ? prev : { ...prev, [tab]: true }));
+  }, []);
+
+  const refreshStoreState = useCallback(async () => {
+    const seq = ++refreshSeqRef.current;
     try {
-      const [healthRes, storeRes] = await Promise.all([
-        fetch('/api/health', { cache: 'no-store' }),
-        fetch('/api/store/state', { cache: 'no-store' }),
-      ]);
-      if (healthRes.ok) {
-        const h = (await healthRes.json()) as HealthSnapshot;
-        setHealth(h);
-      }
+      const storeRes = await fetch('/api/store/state', { cache: 'no-store' });
+      if (seq !== refreshSeqRef.current) return;
       if (storeRes.ok) {
         const s = (await storeRes.json()) as StoreStateSnapshot;
+        if (seq !== refreshSeqRef.current) return;
         setStoreState(s);
         setFetchError(null);
       } else {
         setFetchError('Không thể đồng bộ dữ liệu cửa hàng từ cơ sở dữ liệu.');
       }
     } catch {
+      if (seq !== refreshSeqRef.current) return;
       setFetchError('Mất kết nối tới máy chủ cửa hàng.');
       toast.error('Không thể tải dữ liệu quầy.');
     }
   }, []);
 
+  const handleOrderCreatedOptimistic = useCallback(
+    (created?: { order: OrderRow; items: OrderItemRow[]; debt?: CustomerDebtRow | null }) => {
+      if (created?.order) {
+        const qtyByMenuId = new Map<string, number>();
+        for (const item of created.items) {
+          if (item.menu_item_id && item.quantity > 0) {
+            qtyByMenuId.set(
+              item.menu_item_id,
+              (qtyByMenuId.get(item.menu_item_id) ?? 0) + item.quantity
+            );
+          }
+        }
+
+        setStoreState((prev) => {
+          if (!prev) return prev;
+          const nextOrder: StoreOrderWithItems = { ...created.order, items: created.items };
+          const nextOrders = [
+            nextOrder,
+            ...prev.orders.filter((o) => o.id !== created.order.id),
+          ].slice(0, 25);
+          const nextMenuItems =
+            qtyByMenuId.size > 0
+              ? prev.menuItems.map((m) => {
+                  const delta = qtyByMenuId.get(m.id);
+                  return delta
+                    ? { ...m, daily_sold_count: Math.max(0, m.daily_sold_count + delta) }
+                    : m;
+                })
+              : prev.menuItems;
+          const nextDebts = created.debt
+            ? [
+                created.debt,
+                ...prev.customerDebts.filter((d) => d.id !== created.debt?.id),
+              ].slice(0, 25)
+            : prev.customerDebts;
+
+          return {
+            summary: recomputeSummary(nextOrders, prev.paymentReceipts, nextDebts),
+            menuItems: nextMenuItems,
+            orders: nextOrders,
+            paymentReceipts: prev.paymentReceipts,
+            customerDebts: nextDebts,
+          };
+        });
+      }
+      void refreshStoreState();
+    },
+    [refreshStoreState]
+  );
+
+  const handleOrderStatusOptimistic = useCallback(
+    (orderId?: string, nextStatus?: 'paid' | 'cancelled') => {
+      if (orderId && nextStatus) {
+        setStoreState((prev) => {
+          if (!prev) return prev;
+          const target = prev.orders.find((o) => o.id === orderId);
+          if (!target) return prev;
+
+          const decByMenuId = new Map<string, number>();
+          if (nextStatus === 'cancelled') {
+            for (const item of target.items) {
+              if (item.menu_item_id && item.quantity > 0) {
+                decByMenuId.set(
+                  item.menu_item_id,
+                  (decByMenuId.get(item.menu_item_id) ?? 0) + item.quantity
+                );
+              }
+            }
+          }
+
+          const nextOrders = prev.orders.map((o) =>
+            o.id === orderId ? { ...o, status: nextStatus } : o
+          );
+          const nextMenuItems =
+            decByMenuId.size > 0
+              ? prev.menuItems.map((m) => {
+                  const dec = decByMenuId.get(m.id);
+                  return dec ? { ...m, daily_sold_count: Math.max(0, m.daily_sold_count - dec) } : m;
+                })
+              : prev.menuItems;
+          const nextDebts =
+            target.payment_method === 'debt'
+              ? prev.customerDebts.map((d) =>
+                  d.order_id === orderId ? { ...d, status: 'settled' as const } : d
+                )
+              : prev.customerDebts;
+
+          return {
+            summary: recomputeSummary(nextOrders, prev.paymentReceipts, nextDebts),
+            menuItems: nextMenuItems,
+            orders: nextOrders,
+            paymentReceipts: prev.paymentReceipts,
+            customerDebts: nextDebts,
+          };
+        });
+      }
+      void refreshStoreState();
+    },
+    [refreshStoreState]
+  );
+
+  const handleDebtSettledOptimistic = useCallback(
+    (debtId?: string) => {
+      if (debtId) {
+        setStoreState((prev) => {
+          if (!prev) return prev;
+          const targetDebt = prev.customerDebts.find((d) => d.id === debtId);
+          const nextDebts = prev.customerDebts.map((d) =>
+            d.id === debtId ? { ...d, status: 'settled' as const } : d
+          );
+          const nextOrders = targetDebt?.order_id
+            ? prev.orders.map((o) =>
+                o.id === targetDebt.order_id ? { ...o, status: 'paid' as const } : o
+              )
+            : prev.orders;
+
+          return {
+            summary: recomputeSummary(nextOrders, prev.paymentReceipts, nextDebts),
+            menuItems: prev.menuItems,
+            orders: nextOrders,
+            paymentReceipts: prev.paymentReceipts,
+            customerDebts: nextDebts,
+          };
+        });
+      }
+      void refreshStoreState();
+    },
+    [refreshStoreState]
+  );
+
+  const handleVerificationUpdated = useCallback(() => {
+    void refreshStoreState();
+  }, [refreshStoreState]);
+
+  const handleProceedToReceiptVerify = useCallback(
+    (order: OrderRow) => {
+      setSelectedOrderId(order.id);
+      switchTab('receipt');
+    },
+    [switchTab]
+  );
+
+  const handleInspectOrderDetail = useCallback((key: string) => {
+    setDetailOrderKey(key);
+  }, []);
+
+  const handleCloseDetailModal = useCallback(() => {
+    setDetailOrderKey(null);
+  }, []);
+
   useEffect(() => {
     let active = true;
-    void (async () => {
-      try {
-        const [healthRes, storeRes] = await Promise.all([
-          fetch('/api/health', { cache: 'no-store' }),
-          fetch('/api/store/state', { cache: 'no-store' }),
-        ]);
-        if (!active) return;
-        if (healthRes.ok) {
-          const h = (await healthRes.json()) as HealthSnapshot;
-          if (active) setHealth(h);
-        }
+    const initialSeq = ++refreshSeqRef.current;
+
+    void fetch('/api/health', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((h: HealthSnapshot | null) => {
+        if (active && h) setHealth(h);
+      })
+      .catch(() => {
+        // Non-blocking health check
+      });
+
+    void fetch('/api/store/state', { cache: 'no-store' })
+      .then(async (storeRes) => {
+        if (!active || initialSeq !== refreshSeqRef.current) return;
         if (storeRes.ok) {
           const s = (await storeRes.json()) as StoreStateSnapshot;
-          if (active) {
+          if (active && initialSeq === refreshSeqRef.current) {
             setStoreState(s);
             setFetchError(null);
           }
         } else if (active) {
           setFetchError('Không thể đồng bộ dữ liệu cửa hàng từ cơ sở dữ liệu.');
         }
-      } catch {
+      })
+      .catch(() => {
         if (active) {
           setFetchError('Mất kết nối tới máy chủ cửa hàng.');
           toast.error('Không thể tải dữ liệu quầy.');
         }
+      });
+
+    const warmupTimer = window.setTimeout(() => {
+      if (active) {
+        setVisitedTabs({ pos: true, receipt: true, copilot: true });
       }
-    })();
+    }, 1200);
+
     return () => {
       active = false;
+      window.clearTimeout(warmupTimer);
     };
   }, []);
 
@@ -176,17 +378,15 @@ export function MerchantWorkspace() {
 
   return (
     <div className="relative min-h-screen flex flex-col lg:flex-row text-foreground">
-      {/* Harmonious Light MoMo Blush Backdrop */}
-      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-[#FBF8FA]" aria-hidden="true">
-        <div
-          className="absolute -top-40 -left-24 h-[520px] w-[520px] rounded-full blur-[120px]"
-          style={{ background: 'radial-gradient(circle, rgba(244, 114, 182, 0.11) 0%, transparent 72%)' }}
-        />
-        <div
-          className="absolute -top-24 -right-24 h-[460px] w-[460px] rounded-full blur-[120px]"
-          style={{ background: 'radial-gradient(circle, rgba(165, 0, 100, 0.06) 0%, transparent 72%)' }}
-        />
-      </div>
+      {/* Harmonious Light MoMo Blush Backdrop (CSS gradient without GPU blur filter cost) */}
+      <div
+        className="pointer-events-none fixed inset-0 -z-10 bg-[#FBF8FA]"
+        style={{
+          backgroundImage:
+            'radial-gradient(560px circle at 8% 0%, rgba(244, 114, 182, 0.10), transparent 70%), radial-gradient(500px circle at 92% 0%, rgba(165, 0, 100, 0.06), transparent 70%)',
+        }}
+        aria-hidden="true"
+      />
 
       {/* Desktop Left Navigation Rail (>=1024px) */}
       <aside className="hidden lg:flex lg:w-[244px] lg:shrink-0 lg:sticky lg:top-0 lg:h-screen flex-col justify-between bg-white border-r border-[#EAE0E7] px-3.5 py-4 z-30">
@@ -265,7 +465,7 @@ export function MerchantWorkspace() {
                   key={item.id}
                   type="button"
                   aria-current={isActive ? 'page' : undefined}
-                  onClick={() => setActiveTab(item.id)}
+                  onClick={() => switchTab(item.id)}
                   className={`relative w-full min-h-[42px] rounded-lg px-3 py-2 flex items-center justify-between gap-2 text-sm transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                     isActive
                       ? 'bg-[#FDF2F8] text-[#A50064] font-semibold border border-[#F3D0E2]'
@@ -357,7 +557,7 @@ export function MerchantWorkspace() {
               </span>
               <button
                 type="button"
-                onClick={() => void loadWorkspaceData()}
+                onClick={() => void refreshStoreState()}
                 className="font-semibold underline hover:text-[#78350F] shrink-0 cursor-pointer"
               >
                 Thử lại
@@ -370,37 +570,38 @@ export function MerchantWorkspace() {
               ref={orderPanelRef}
               menuItems={storeState?.menuItems ?? []}
               orders={storeState?.orders ?? []}
-              onOrderCreated={loadWorkspaceData}
-              onProceedToReceiptVerify={(order) => {
-                setSelectedOrderId(order.id);
-                setActiveTab('receipt');
-              }}
-              onInspectOrderDetail={(key) => setDetailOrderKey(key)}
+              onOrderCreated={handleOrderCreatedOptimistic}
+              onProceedToReceiptVerify={handleProceedToReceiptVerify}
+              onInspectOrderDetail={handleInspectOrderDetail}
             />
           </div>
 
-          <div className={activeTab === 'receipt' ? 'block' : 'hidden'}>
-            <ReceiptFraudInspector
-              ref={receiptPanelRef}
-              orders={storeState?.orders ?? []}
-              paymentReceipts={storeState?.paymentReceipts ?? []}
-              selectedOrderId={selectedOrderId}
-              onSelectOrderId={(id) => setSelectedOrderId(id)}
-              onVerificationUpdated={loadWorkspaceData}
-              onInspectOrderDetail={(key) => setDetailOrderKey(key)}
-            />
-          </div>
+          {visitedTabs.receipt && (
+            <div className={activeTab === 'receipt' ? 'block' : 'hidden'}>
+              <ReceiptFraudInspector
+                ref={receiptPanelRef}
+                orders={storeState?.orders ?? []}
+                paymentReceipts={storeState?.paymentReceipts ?? []}
+                selectedOrderId={selectedOrderId}
+                onSelectOrderId={setSelectedOrderId}
+                onVerificationUpdated={handleVerificationUpdated}
+                onInspectOrderDetail={handleInspectOrderDetail}
+              />
+            </div>
+          )}
 
-          <div className={activeTab === 'copilot' ? 'block' : 'hidden'}>
-            <OperationsCopilotPanel
-              ref={copilotPanelRef}
-              summary={summary ?? null}
-              menuItems={storeState?.menuItems ?? []}
-              debts={storeState?.customerDebts ?? []}
-              onDebtSettled={loadWorkspaceData}
-              onInspectOrderDetail={(key) => setDetailOrderKey(key)}
-            />
-          </div>
+          {visitedTabs.copilot && (
+            <div className={activeTab === 'copilot' ? 'block' : 'hidden'}>
+              <OperationsCopilotPanel
+                ref={copilotPanelRef}
+                summary={summary ?? null}
+                menuItems={storeState?.menuItems ?? []}
+                debts={storeState?.customerDebts ?? []}
+                onDebtSettled={handleDebtSettledOptimistic}
+                onInspectOrderDetail={handleInspectOrderDetail}
+              />
+            </div>
+          )}
         </main>
       </div>
 
@@ -416,7 +617,7 @@ export function MerchantWorkspace() {
             <button
               key={item.id}
               type="button"
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => switchTab(item.id)}
               className={`relative min-h-[46px] rounded-lg px-2 py-1.5 flex flex-col items-center justify-center gap-0.5 text-[11px] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                 isActive
                   ? 'bg-[#FDF2F8] text-[#A50064] font-semibold border border-[#F3D0E2]'
@@ -456,12 +657,9 @@ export function MerchantWorkspace() {
             : null
         }
         receipts={storeState?.paymentReceipts ?? []}
-        onClose={() => setDetailOrderKey(null)}
-        onOrderUpdated={loadWorkspaceData}
-        onProceedToReceiptVerify={(order) => {
-          setSelectedOrderId(order.id);
-          setActiveTab('receipt');
-        }}
+        onClose={handleCloseDetailModal}
+        onOrderUpdated={handleOrderStatusOptimistic}
+        onProceedToReceiptVerify={handleProceedToReceiptVerify}
       />
     </div>
   );

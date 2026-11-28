@@ -1,4 +1,5 @@
 import { connection, NextResponse } from 'next/server';
+import { setCachedMenuItems, syncOrderCodeWatermark } from '@/lib/store-cache';
 import { createSupabaseAdminClient, SupabaseConfigError } from '@/lib/supabase/server';
 import type {
   CustomerDebtRow,
@@ -35,7 +36,7 @@ export async function GET() {
     const [menuRes, ordersRes, itemsRes, receiptsRes, debtsRes] = await Promise.all([
       supabase.from('menu_items').select('*').order('daily_sold_count', { ascending: false }),
       supabase.from('orders').select('*').order('created_at', { ascending: false }).limit(25),
-      supabase.from('order_items').select('*').order('created_at', { ascending: true }).limit(200),
+      supabase.from('order_items').select('*').order('created_at', { ascending: false }).limit(250),
       supabase.from('payment_receipts').select('*').order('created_at', { ascending: false }).limit(25),
       supabase.from('customer_debts').select('*').order('created_at', { ascending: false }).limit(25),
     ]);
@@ -59,6 +60,9 @@ export async function GET() {
     const paymentReceipts = (receiptsRes.data ?? []) as PaymentReceiptRow[];
     const customerDebts = (debtsRes.data ?? []) as CustomerDebtRow[];
 
+    setCachedMenuItems(menuItems);
+    syncOrderCodeWatermark(rawOrders.map((o) => o.order_code));
+
     const itemsByOrderId = new Map<string, OrderItemRow[]>();
     for (const item of rawItems) {
       const bucket = itemsByOrderId.get(item.order_id) ?? [];
@@ -68,7 +72,7 @@ export async function GET() {
 
     const orders: StoreOrderWithItems[] = rawOrders.map((order) => ({
       ...order,
-      items: itemsByOrderId.get(order.id) ?? [],
+      items: (itemsByOrderId.get(order.id) ?? []).slice().reverse(),
     }));
 
     const paidOrders = orders.filter((o) => o.status === 'paid');

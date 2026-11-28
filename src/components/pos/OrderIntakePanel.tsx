@@ -2,6 +2,7 @@
 
 import {
   forwardRef,
+  memo,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -53,6 +54,7 @@ import {
   getMerchantBankInfo,
 } from '@/lib/vietqr';
 import type {
+  CustomerDebtRow,
   MenuCategory,
   MenuItemRow,
   OrderItemRow,
@@ -77,7 +79,11 @@ export interface OrderIntakeHandle {
 interface OrderIntakePanelProps {
   menuItems: MenuItemRow[];
   orders: StoreOrderWithItems[];
-  onOrderCreated: () => Promise<void>;
+  onOrderCreated: (created?: {
+    order: OrderRow;
+    items: OrderItemRow[];
+    debt?: CustomerDebtRow | null;
+  }) => void | Promise<void>;
   onProceedToReceiptVerify: (order: OrderRow) => void;
   onInspectOrderDetail: (orderId: string) => void;
 }
@@ -112,8 +118,9 @@ const MENU_CATEGORY_TABS: ReadonlyArray<{ id: 'all' | MenuCategory; label: strin
   { id: 'pastry', label: 'Bánh ngọt' },
 ];
 
-export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelProps>(
-  function OrderIntakePanel(
+export const OrderIntakePanel = memo(
+  forwardRef<OrderIntakeHandle, OrderIntakePanelProps>(
+    function OrderIntakePanel(
     { menuItems, orders, onOrderCreated, onProceedToReceiptVerify, onInspectOrderDetail },
     ref
   ) {
@@ -576,7 +583,11 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
         } else {
           toast.success(`Đã tạo đơn ${savedOrder.order_code} và xuất mã VietQR.`);
         }
-        await onOrderCreated();
+        void onOrderCreated({
+          order: savedOrder,
+          items: (data.items ?? []) as OrderItemRow[],
+          debt: (data.debt ?? null) as CustomerDebtRow | null,
+        });
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Lỗi lưu đơn hàng.');
       } finally {
@@ -1740,6 +1751,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
       </div>
     );
   }
+)
 );
 
 function OrderStatusText({ status }: { status: OrderRow['status'] }) {
