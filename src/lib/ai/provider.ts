@@ -340,6 +340,30 @@ function isProviderConfigured(provider: AIProviderName): boolean {
   );
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, provider: AIProviderName): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(
+        new AIProviderError(
+          provider,
+          'UPSTREAM_ERROR',
+          `AI request timed out after ${Math.round(timeoutMs / 1000)}s.`
+        )
+      );
+    }, timeoutMs);
+    promise.then(
+      (val) => {
+        clearTimeout(timer);
+        resolve(val);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
 async function invokeProviderAndValidate<T>(params: {
   provider: AIProviderName;
   enrichedSystemPrompt: string;
@@ -351,27 +375,28 @@ async function invokeProviderAndValidate<T>(params: {
   const { provider, enrichedSystemPrompt, userPrompt, cleanBase64, imageMimeType, schema } = params;
   let rawOutput: string;
   try {
-    rawOutput =
+    const callPromise =
       provider === 'bedrock'
-        ? await invokeBedrockConverse({
+        ? invokeBedrockConverse({
             systemPrompt: enrichedSystemPrompt,
             userPrompt,
             cleanBase64,
             imageMimeType,
           })
         : provider === 'agnes'
-          ? await invokeAgnesChatCompletions({
+          ? invokeAgnesChatCompletions({
               systemPrompt: enrichedSystemPrompt,
               userPrompt,
               cleanBase64,
               imageMimeType,
             })
-          : await invokeGeminiGenerate({
+          : invokeGeminiGenerate({
               systemPrompt: enrichedSystemPrompt,
               userPrompt,
               cleanBase64,
               imageMimeType,
             });
+    rawOutput = await withTimeout(callPromise, 20_000, provider);
   } catch (err) {
     if (err instanceof AIProviderError) throw err;
     throw new AIProviderError(
@@ -470,7 +495,7 @@ export async function generateStructuredJSON<T>(
 
   let lastError: AIProviderError | null = null;
   for (const candidate of candidates) {
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
         return await invokeProviderAndValidate({
           provider: candidate,
@@ -494,8 +519,9 @@ export async function generateStructuredJSON<T>(
         if (aiErr.code === 'PROVIDER_NOT_CONFIGURED' || aiErr.code === 'INVALID_INPUT') {
           break;
         }
-        if (attempt === 0) {
-          await new Promise((resolve) => setTimeout(resolve, 400));
+        if (attempt < 2) {
+          const delayMs = attempt === 0 ? 400 : 900;
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
         }
       }
     }

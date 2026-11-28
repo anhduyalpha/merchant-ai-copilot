@@ -8,17 +8,18 @@ export const ParsedOrderItemSchema = z.object({
   sku: z.string().nullable().default(null),
   matchedItemName: z.string().min(1),
   rawText: z.string().default(''),
-  quantity: z.number().int().positive(),
+  quantity: z.number().int().positive().max(9999),
   unitPriceVnd: z.number().int().nonnegative().default(0),
   modifiers: z.array(z.string()).default([]),
   paymentSplitTag: z.enum(['cash', 'transfer', 'shared']).catch('shared').default('shared'),
   lineTotalVnd: z.number().int().nonnegative().default(0),
+  isUnmatched: z.boolean().catch(false).default(false),
 });
 
 export const ParsedOrderSchema = z.object({
   tableOrChannel: z.string().min(1).default('Tại quầy'),
   customerName: z.string().nullable().default(null),
-  items: z.array(ParsedOrderItemSchema).min(1),
+  items: z.array(ParsedOrderItemSchema).default([]),
   subtotalVnd: z.number().int().nonnegative().default(0),
   discountVnd: z.number().int().nonnegative().default(0),
   discountReason: z.string().nullable().default(null),
@@ -27,6 +28,7 @@ export const ParsedOrderSchema = z.object({
   transferAmountVnd: z.number().int().nonnegative().default(0),
   paymentMethod: z.enum(['vietqr', 'cash', 'split', 'debt', 'transfer']).catch('vietqr').default('vietqr'),
   unmatchedNotes: z.array(z.string()).default([]),
+  warnings: z.array(z.string()).default([]),
   confidence: z.number().min(0).max(1).catch(0.9).default(0.9),
 });
 
@@ -38,15 +40,16 @@ export type ParsedOrder = z.infer<typeof ParsedOrderSchema>;
  * Extracts banking fields + visual tampering signals from uploaded transfer screenshots.
  */
 export const ReceiptExtractionSchema = z.object({
-  transactionRef: z.string().min(1),
-  bankName: z.string().min(1),
-  extractedAmountVnd: z.number().int().nonnegative(),
+  isValidReceiptImage: z.boolean().catch(true).default(true),
+  transactionRef: z.string().default('UNKNOWN'),
+  bankName: z.string().default('Không rõ'),
+  extractedAmountVnd: z.number().int().nonnegative().catch(0).default(0),
   receiptTimestampIso: z.string().nullable().default(null),
   transferNote: z.string().nullable().default(null),
   senderName: z.string().nullable().default(null),
   receiverAccountNo: z.string().nullable().default(null),
   visualTamperingFlags: z.array(z.string()).default([]),
-  tamperingConfidence: z.number().min(0).max(1).default(0),
+  tamperingConfidence: z.number().min(0).max(1).catch(0).default(0),
   ocrRawSummary: z.string().default(''),
 });
 
@@ -77,7 +80,7 @@ export const CopilotDebtReminderDraftSchema = z.object({
   channelHandle: z.string().min(1),
   amountDueVnd: z.number().int().nonnegative(),
   messageVi: z.string().min(1),
-  vietqrUrl: z.string().url(),
+  vietqrUrl: z.string().default(''),
 });
 
 export const CopilotActionSchema = z.object({

@@ -34,6 +34,13 @@ export async function POST(
 
     const existing = debt as CustomerDebtRow;
 
+    if (existing.status === 'settled') {
+      return NextResponse.json(
+        { ok: true, alreadySettled: true, debt: existing },
+        { status: 200 }
+      );
+    }
+
     const { data: updatedDebt, error: updateErr } = await supabase
       .from('customer_debts')
       .update({ status: 'settled' })

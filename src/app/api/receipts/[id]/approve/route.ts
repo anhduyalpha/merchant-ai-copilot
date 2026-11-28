@@ -62,6 +62,19 @@ export async function POST(
 
     const receiptRow = existing as PaymentReceiptRow;
 
+    if (receiptRow.verdict === nextVerdict) {
+      return NextResponse.json(
+        {
+          ok: true,
+          alreadyProcessed: true,
+          receipt: receiptRow,
+          approvalStatus: nextVerdict,
+          orderStatus: null,
+        },
+        { status: 200 }
+      );
+    }
+
     const { data: updatedReceipt, error: updateErr } = await supabase
       .from('payment_receipts')
       .update({

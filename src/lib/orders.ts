@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ParsedOrder, ParsedOrderItem } from '@/lib/ai/schemas';
-import { buildVietQRUrl } from '@/lib/vietqr';
+import { buildVietQRPayload } from '@/lib/vietqr';
 import type {
   Database,
   MenuItemRow,
@@ -12,6 +12,7 @@ import type {
 
 export interface NormalizedOrderItem extends ParsedOrderItem {
   menuItemId: string | null;
+  isUnmatched: boolean;
 }
 
 export interface NormalizedOrderDraft {
@@ -26,6 +27,7 @@ export interface NormalizedOrderDraft {
   transferAmountVnd: number;
   paymentMethod: PaymentMethod;
   unmatchedNotes: string[];
+  warnings: string[];
   confidence: number;
 }
 
@@ -73,8 +75,8 @@ export function normalizeAndCalculateOrder(
       (skuKey ? bySku.get(skuKey) : undefined) ??
       byName.get(item.matchedItemName.trim().toLowerCase());
 
-    const quantity = Math.max(1, Math.round(item.quantity));
-    const unitPriceVnd = matched ? matched.price_vnd : Math.max(0, Math.round(item.unitPriceVnd));
+    const quantity = Math.min(9999, Math.max(1, Math.round(item.quantity)));
+    const unitPriceVnd = matched ? matched.price_vnd : Math.max(0, Math.round(item.unitPriceVnd ?? 0));
     const lineTotalVnd = quantity * unitPriceVnd;
 
     return {
@@ -89,6 +91,7 @@ export function normalizeAndCalculateOrder(
         : [],
       paymentSplitTag: item.paymentSplitTag ?? 'shared',
       lineTotalVnd,
+      isUnmatched: !matched || Boolean(item.isUnmatched),
     };
   });
 
@@ -132,6 +135,9 @@ export function normalizeAndCalculateOrder(
     paymentMethod,
     unmatchedNotes: Array.isArray(parsed.unmatchedNotes)
       ? parsed.unmatchedNotes.map((n) => n.trim()).filter(Boolean)
+      : [],
+    warnings: Array.isArray(parsed.warnings)
+      ? parsed.warnings.map((w) => w.trim()).filter(Boolean)
       : [],
     confidence: Math.min(1, Math.max(0, Number(parsed.confidence ?? 0.9))),
   };
@@ -185,7 +191,7 @@ export async function persistOrderToSupabase(
           : 0;
 
     vietqrUrl =
-      qrAmount > 0 ? buildVietQRUrl({ amount: qrAmount, addInfo: orderCode }) : null;
+      qrAmount > 0 ? buildVietQRPayload({ amount: qrAmount, addInfo: orderCode }) : null;
 
     const status =
       draft.paymentMethod === 'debt'
@@ -251,18 +257,18 @@ export async function persistOrderToSupabase(
   }
 
   if (draft.paymentMethod === 'debt') {
-    const debtQrUrl =
-      vietqrUrl ?? buildVietQRUrl({ amount: draft.totalVnd, addInfo: order.order_code });
+    const debtQrPayload =
+      vietqrUrl ?? buildVietQRPayload({ amount: draft.totalVnd, addInfo: order.order_code });
     const { error: debtErr } = await supabase.from('customer_debts').insert({
       order_id: order.id,
       order_code: order.order_code,
       customer_name: draft.customerName || `${draft.tableOrChannel} (Khách quen)`,
       customer_alias: draft.customerName,
-      channel_handle: `${draft.tableOrChannel} (Synthetic)`,
+      channel_handle: draft.tableOrChannel || 'Tại quầy',
       amount_due_vnd: draft.totalVnd,
       due_date: new Date().toISOString().slice(0, 10),
       status: 'unpaid',
-      vietqr_url: debtQrUrl,
+      vietqr_url: debtQrPayload,
       notes: draft.items.map((i) => `${i.quantity} ${i.matchedItemName}`).join(' + '),
     });
     if (debtErr) {

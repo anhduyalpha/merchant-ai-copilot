@@ -1,14 +1,18 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import {
+  detectOrderContradictions,
+  parseVietnameseOrderFallback,
+} from '@/lib/ai/local-order-parser';
 import { AIProviderError, generateStructuredJSON } from '@/lib/ai/provider';
-import { ParsedOrderSchema } from '@/lib/ai/schemas';
+import { ParsedOrderSchema, type ParsedOrder } from '@/lib/ai/schemas';
 import {
   normalizeAndCalculateOrder,
   persistOrderToSupabase,
   sanitizeImageMimeType,
 } from '@/lib/orders';
 import { createSupabaseAdminClient, SupabaseConfigError } from '@/lib/supabase/server';
-import { buildVietQRUrl, formatVND } from '@/lib/vietqr';
+import { buildVietQRPayload, formatVND } from '@/lib/vietqr';
 import type { MenuItemRow } from '@/types/database';
 
 const ParseOrderRequestSchema = z.object({
@@ -95,15 +99,16 @@ export async function POST(request: Request) {
     );
 
     const systemPrompt = [
-      'Bạn là trợ lý nhận đơn POS tiếng Việt cho quán cà phê.',
-      'Hãy đối chiếu tin nhắn tiếng lóng, giọng nói hoặc ảnh giấy ghi tay với danh sách thực đơn (kèm aliases) dưới đây.',
+      'Bạn là trợ lý nhận đơn POS tiếng Việt cho quán cà phê "Tiệm Cà Phê Mộc".',
+      'Hãy đối chiếu tin nhắn tiếng lóng/sai chính tả, giọng nói hoặc ảnh giấy ghi tay với thực đơn dưới đây.',
       'Quy tắc bắt buộc:',
-      '- Luôn ưu tiên khớp đúng `sku`, `matchedItemName`, `unitPriceVnd` từ thực đơn.',
-      '- Bóc tách rõ `modifiers` (vd: ít ngọt, nhiều đá, nóng giòn, không thạch).',
-      '- Nếu khách yêu cầu tách món trả tiền mặt (vd: "tách 1 trà đào tính tiền mặt") -> đặt `paymentSplitTag: "cash"`, `paymentMethod: "split"`, cộng `cashAmountVnd` và `transferAmountVnd` khớp `totalVnd`.',
-      '- Nếu khách hẹn ghi sổ ("ghi sổ", "cuối ngày chuyển", "nợ") -> đặt `paymentMethod: "debt"`, `cashAmountVnd: 0`, `transferAmountVnd: 0`.',
-      '- Nếu có giảm giá khách quen (vd: "giảm 5k", "giảm 10k") -> điền `discountVnd` nguyên đồng (vd: 5000, 10000) và `discountReason`.',
-      '- Mọi số tiền là số nguyên VND không dấu phẩy.',
+      '- Tự sửa lỗi chính tả tiếng Việt phổ biến (vd: "ít đã" -> "ít đá", "ko"/"k" -> "không", "cf"/"cfs" -> Cà phê sữa đá, "bx" -> Bạc xỉu đá, "bmq" -> Bánh mì que).',
+      '- Nếu có món khớp thực đơn: điền đúng `sku`, `matchedItemName`, `unitPriceVnd`, `isUnmatched: false`.',
+      '- Nếu khách gọi món KHÔNG có trong thực đơn (vd: "2 trà chanh"): vẫn giữ món đó trong `items` với `sku: null`, `unitPriceVnd: 0`, `isUnmatched: true` để thu ngân tự nhập giá hoặc đổi món.',
+      '- Nếu có MÂU THUẪN hợp lý (vd: "cf sữa không có sữa", "trà đào không đào"): KHÔNG được lỗi, hãy chọn món gần nhất và thêm lời nhắc rõ ràng vào `warnings` (vd: "Khách gọi Cà phê sữa nhưng ghi không có sữa — cân nhắc đổi sang Cà phê đen đá hoặc hỏi lại khách").',
+      '- Nếu tin nhắn KHÔNG chứa món ăn nào (vd: "alo quán ơi", "???", "cảm ơn"): trả về `items: []` và ghi giải thích ngắn vào `warnings`.',
+      '- Tách món trả tiền mặt ("tách 1 trà đào tính tiền mặt") -> `paymentSplitTag: "cash"`, `paymentMethod: "split"`. Ghi sổ ("ghi sổ", "cuối ngày chuyển") -> `paymentMethod: "debt"`. Giảm giá ("giảm 5k", "giảm 10k") -> `discountVnd` nguyên đồng.',
+      '- Mọi số tiền là số nguyên VND không dấu phẩy. Số lượng nằm trong [1, 9999].',
       `Thực đơn hiện có: ${menuCatalogJson}`,
     ].join('\n');
 
@@ -111,15 +116,59 @@ export async function POST(request: Request) {
       ? `Loại đầu vào: ${inputType}. Đọc toàn bộ món, số lượng, ghi chú, giảm giá và phương thức thanh toán từ ảnh đơn viết tay.${cleanText ? ` Ghi chú thêm: ${cleanText}` : ''}`
       : `Loại đầu vào: ${inputType}. Phân tích đơn hàng sau thành JSON chuẩn:\n"${cleanText}"`;
 
-    const aiParsed = await generateStructuredJSON({
-      systemPrompt,
-      userPrompt,
-      imageBase64: hasImage ? imageBase64 : undefined,
-      imageMimeType: hasImage ? sanitizeImageMimeType(imageMimeType) : undefined,
-      schema: ParsedOrderSchema,
-    });
+    let aiParsed: ParsedOrder;
+    let fallbackUsed = false;
+
+    try {
+      aiParsed = await generateStructuredJSON({
+        systemPrompt,
+        userPrompt,
+        imageBase64: hasImage ? imageBase64 : undefined,
+        imageMimeType: hasImage ? sanitizeImageMimeType(imageMimeType) : undefined,
+        schema: ParsedOrderSchema,
+      });
+    } catch (aiErr) {
+      if (aiErr instanceof AIProviderError && !hasImage && cleanText) {
+        aiParsed = parseVietnameseOrderFallback(cleanText, menuItems);
+        fallbackUsed = true;
+      } else {
+        throw aiErr;
+      }
+    }
 
     const normalized = normalizeAndCalculateOrder(aiParsed, menuItems);
+
+    const extraWarnings = [
+      ...normalized.warnings,
+      ...(cleanText ? detectOrderContradictions(cleanText, normalized.items) : []),
+      ...(normalized.items.some((i) => i.isUnmatched)
+        ? ['Có món chưa nằm trong thực đơn — vui lòng nhập đơn giá hoặc đổi món phù hợp.']
+        : []),
+    ];
+    normalized.warnings = Array.from(new Set(extraWarnings));
+
+    if (normalized.items.length === 0) {
+      if (normalized.warnings.length === 0) {
+        normalized.warnings = [
+          'Không tìm thấy món nào trong tin nhắn — vui lòng nhập rõ tên món hoặc chọn từ thực đơn.',
+        ];
+      }
+      return NextResponse.json(
+        {
+          ok: true,
+          saved: false,
+          fallbackUsed,
+          parsed: normalized,
+          parsedOrder: normalized,
+          warnings: normalized.warnings,
+          customerLabel: normalized.customerName || normalized.tableOrChannel,
+          reasoning: normalized.warnings[0],
+          reasoningVi: normalized.warnings[0],
+          previewVietqrUrl: null,
+        },
+        { status: 200 }
+      );
+    }
 
     const splitNote =
       normalized.paymentMethod === 'split'
@@ -150,7 +199,10 @@ export async function POST(request: Request) {
         {
           ok: true,
           saved: true,
+          fallbackUsed,
           parsed: normalized,
+          parsedOrder: normalized,
+          warnings: normalized.warnings,
           customerLabel: normalized.customerName || normalized.tableOrChannel,
           reasoning: reasoningVi,
           reasoningVi,
@@ -168,18 +220,21 @@ export async function POST(request: Request) {
         : normalized.paymentMethod === 'vietqr' || normalized.paymentMethod === 'debt'
           ? normalized.totalVnd
           : 0;
-    const previewVietqrUrl =
-      qrAmount > 0 ? buildVietQRUrl({ amount: qrAmount, addInfo: 'TAM TINH DON MOI' }) : null;
+    const previewVietqrPayload =
+      qrAmount > 0 ? buildVietQRPayload({ amount: qrAmount, addInfo: 'TAM TINH DON MOI' }) : null;
 
     return NextResponse.json(
       {
         ok: true,
         saved: false,
+        fallbackUsed,
         parsed: normalized,
+        parsedOrder: normalized,
+        warnings: normalized.warnings,
         customerLabel: normalized.customerName || normalized.tableOrChannel,
         reasoning: reasoningVi,
         reasoningVi,
-        previewVietqrUrl,
+        previewVietqrUrl: previewVietqrPayload,
       },
       { status: 200 }
     );

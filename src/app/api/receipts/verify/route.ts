@@ -122,6 +122,8 @@ export async function POST(request: Request) {
       const systemPrompt = [
         'Bạn là chuyên gia thẩm định biên lai chuyển khoản ngân hàng Việt Nam và phát hiện làm giả ảnh (Anti-Fraud Vision).',
         'Hãy trích xuất chính xác các trường trong biên lai theo schema JSON.',
+        'Kiểm tra trước tiên xem ảnh có phải BIÊN LAI / MÀN HÌNH CHUYỂN KHOẢN NGÂN HÀNG hay không:',
+        '- Nếu ảnh là ảnh selfie, phong cảnh, tờ giấy trắng, ảnh mờ không đọc được chữ/số giao dịch: đặt `isValidReceiptImage: false`, `transactionRef: "UNKNOWN"`, `extractedAmountVnd: 0`.',
         'Đặc biệt kiểm tra kỹ 4 điểm chống giả mạo:',
         '1. Đọc cả SỐ TIỀN BẰNG SỐ lẫn "Số tiền bằng chữ" (nếu hai dòng mâu thuẫn, ví dụ hiển thị 64,000 VND nhưng chữ ghi "Sáu nghìn bốn trăm đồng", bắt buộc đặt extractedAmountVnd theo giá trị bằng chữ xác thực hơn hoặc thấp hơn và ghi rõ mâu thuẫn vào visualTamperingFlags, tamperingConfidence >= 0.85).',
         '2. Soi kỹ vùng số tiền xem có vết vá nền khác màu, lệch baseline dọc, khác font chữ/độ đậm nhạt hay nhòe JPEG quanh các chữ số không — liệt kê cụ thể bằng tiếng Việt vào visualTamperingFlags.',
@@ -141,6 +143,7 @@ export async function POST(request: Request) {
       });
     } else if (matchedScenario) {
       extraction = {
+        isValidReceiptImage: true,
         ...matchedScenario.simulatedExtraction,
         senderName: 'Khách hàng Demo',
         receiverAccountNo: '0123456789',
@@ -150,18 +153,58 @@ export async function POST(request: Request) {
       throw new Error('Missing extraction source.');
     }
 
-    // Layer 1: Exact VND Amount Match
-    const exactAmountMatch = extraction.extractedAmountVnd === expectedAmountVnd;
+    const cleanRef = extraction.transactionRef.replace(/\s+/g, '').toUpperCase();
 
-    // Layer 2: Duplicate Transaction Reference Lookup in PostgreSQL
-    const cleanRef = extraction.transactionRef.trim();
-    const { data: existingRefs } = await supabase
+    if (
+      extraction.isValidReceiptImage === false ||
+      (cleanRef === 'UNKNOWN' && extraction.extractedAmountVnd === 0)
+    ) {
+      return NextResponse.json(
+        {
+          ok: true,
+          isUnreadableReceipt: true,
+          verdict: 'warning',
+          riskLevel: 'medium',
+          recommendedVerdict: 'pending_review',
+          message:
+            'Không nhận diện được biên lai chuyển khoản — vui lòng chụp rõ ảnh màn hình chuyển khoản ngân hàng.',
+          checks: [
+            {
+              layer: 4,
+              key: 'visual_tampering',
+              labelVi: 'Nhận diện ảnh biên lai',
+              passed: false,
+              severity: 'warning',
+              detailVi:
+                'Ảnh tải lên không rõ thông tin giao dịch ngân hàng (mã tham chiếu/số tiền). Vui lòng tải lại ảnh chụp màn hình rõ nét.',
+            },
+          ],
+          extraction,
+          aiReasoning: ['Không nhận diện được biên lai chuyển khoản từ ảnh tải lên.'],
+          reasoningVi: ['Không nhận diện được biên lai chuyển khoản từ ảnh tải lên.'],
+          requiresHumanConfirmation: true,
+        },
+        { status: 200 }
+      );
+    }
+
+    // Layer 1: Exact VND Amount Match (explicit Shortage vs Overpayment messaging)
+    const diffVnd = extraction.extractedAmountVnd - expectedAmountVnd;
+    const exactAmountMatch = diffVnd === 0;
+    const amountDetailVi = exactAmountMatch
+      ? `Khớp chính xác ${formatVND(expectedAmountVnd)}.`
+      : diffVnd < 0
+        ? `Thiếu ${formatVND(Math.abs(diffVnd))} (biên lai ${formatVND(extraction.extractedAmountVnd)} / cần thu ${formatVND(expectedAmountVnd)}).`
+        : `Dư ${formatVND(diffVnd)} (biên lai ${formatVND(extraction.extractedAmountVnd)} / cần thu ${formatVND(expectedAmountVnd)}).`;
+
+    // Layer 2: Normalized Duplicate Transaction Reference Lookup in PostgreSQL
+    const { data: recentRefs } = await supabase
       .from('payment_receipts')
       .select('id, order_id, transaction_ref, verdict, created_at')
-      .eq('transaction_ref', cleanRef)
-      .limit(5);
+      .order('created_at', { ascending: false })
+      .limit(100);
 
-    const existingList = (existingRefs ?? []) as Array<{
+    const existingList = (recentRefs ?? []) as Array<{
       id: string;
       order_id: string | null;
       transaction_ref: string;
@@ -169,8 +212,12 @@ export async function POST(request: Request) {
       created_at: string;
     }>;
 
-    // Duplicate if ref exists in DB (or specifically belongs to another order / already approved receipt)
-    const duplicateHits = existingList.filter((r) =>
+    const normalizedRefHits = existingList.filter(
+      (r) => r.transaction_ref.replace(/\s+/g, '').toUpperCase() === cleanRef
+    );
+
+    // Duplicate if normalized ref exists on another order or an already approved receipt
+    const duplicateHits = normalizedRefHits.filter((r) =>
       targetOrder ? r.order_id !== targetOrder.id || r.verdict === 'approved' : true
     );
     const isDuplicateRef = duplicateHits.length > 0;
@@ -226,9 +273,7 @@ export async function POST(request: Request) {
         labelVi: 'Lớp 1 • Khớp số tiền tuyệt đối',
         passed: exactAmountMatch,
         severity: exactAmountMatch ? 'pass' : 'fail',
-        detailVi: exactAmountMatch
-          ? `Khớp chính xác ${formatVND(expectedAmountVnd)}.`
-          : `Lệch tiền: biên lai đọc được ${formatVND(extraction.extractedAmountVnd)} nhưng cần ${formatVND(expectedAmountVnd)}.`,
+        detailVi: amountDetailVi,
       },
       {
         layer: 2,
@@ -315,6 +360,11 @@ export async function POST(request: Request) {
       );
     }
 
+    const alreadyPaidWarningVi =
+      targetOrder?.status === 'paid'
+        ? `Đơn ${targetOrder.order_code} đã được thanh toán trước đó — hãy kiểm tra kỹ để tránh duyệt trùng.`
+        : null;
+
     return NextResponse.json(
       {
         ok: true,
@@ -324,6 +374,7 @@ export async function POST(request: Request) {
         recommendedVerdict,
         checks,
         extraction,
+        alreadyPaidWarningVi,
         aiReasoning: reasoningVi,
         reasoningVi,
         requiresHumanConfirmation: true,

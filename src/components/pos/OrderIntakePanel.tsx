@@ -1,8 +1,8 @@
 'use client';
 
-import Image from 'next/image';
 import {
   forwardRef,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -10,7 +10,9 @@ import {
   type ClipboardEvent,
   type DragEvent,
 } from 'react';
+import Image from 'next/image';
 import {
+  AlertTriangle,
   ArrowRight,
   Banknote,
   BookOpen,
@@ -18,6 +20,7 @@ import {
   Check,
   CheckCircle2,
   Copy,
+  FileText,
   ImagePlus,
   Loader2,
   MessageSquareText,
@@ -32,6 +35,7 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { LocalVietQRCode } from '@/components/pos/LocalVietQRCode';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -42,7 +46,11 @@ import {
 } from '@/lib/demo-presets';
 import type { NormalizedOrderDraft, NormalizedOrderItem } from '@/lib/orders';
 import { cleanCustomerDisplay } from '@/lib/utils';
-import { buildVietQRUrl, formatVND } from '@/lib/vietqr';
+import {
+  formatTransferReminderText,
+  formatVND,
+  getMerchantBankInfo,
+} from '@/lib/vietqr';
 import type {
   MenuCategory,
   MenuItemRow,
@@ -51,13 +59,10 @@ import type {
   PaymentMethod,
 } from '@/types/database';
 
-const MERCHANT_BANK_ID = (process.env.NEXT_PUBLIC_VIETQR_BANK_ID || 'MB').trim();
-const MERCHANT_ACCOUNT_NO = (process.env.NEXT_PUBLIC_VIETQR_ACCOUNT_NO || '0123456789').trim();
-const MERCHANT_ACCOUNT_NAME = (
-  process.env.NEXT_PUBLIC_VIETQR_ACCOUNT_NAME || 'TIEM CA PHE MOC'
-)
-  .replace(/QUAN CA PHE DEMO/gi, 'TIEM CA PHE MOC')
-  .trim();
+const BANK_INFO = getMerchantBankInfo();
+const MERCHANT_BANK_ID = BANK_INFO.bankId;
+const MERCHANT_ACCOUNT_NO = BANK_INFO.accountNo;
+const MERCHANT_ACCOUNT_NAME = BANK_INFO.accountName;
 
 export interface StoreOrderWithItems extends OrderRow {
   items: OrderItemRow[];
@@ -73,6 +78,7 @@ interface OrderIntakePanelProps {
   orders: StoreOrderWithItems[];
   onOrderCreated: () => Promise<void>;
   onProceedToReceiptVerify: (order: OrderRow) => void;
+  onInspectOrderDetail: (orderId: string) => void;
 }
 
 interface SpeechRecognitionInstance {
@@ -107,7 +113,7 @@ const MENU_CATEGORY_TABS: ReadonlyArray<{ id: 'all' | MenuCategory; label: strin
 
 export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelProps>(
   function OrderIntakePanel(
-    { menuItems, orders, onOrderCreated, onProceedToReceiptVerify },
+    { menuItems, orders, onOrderCreated, onProceedToReceiptVerify, onInspectOrderDetail },
     ref
   ) {
     const [inputMode, setInputMode] = useState<'chat' | 'handwritten' | 'voice'>('chat');
@@ -129,6 +135,9 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
     const [draft, setDraft] = useState<NormalizedOrderDraft | null>(null);
     const [draftSourceType, setDraftSourceType] = useState<'chat' | 'handwritten' | 'voice' | 'manual'>('manual');
     const [reasoningVi, setReasoningVi] = useState<string>('');
+    const [warningsVi, setWarningsVi] = useState<string[]>([]);
+    const [largeOrderConfirmed, setLargeOrderConfirmed] = useState(false);
+    const [showDebtQr, setShowDebtQr] = useState(false);
     const [savedOrderResult, setSavedOrderResult] = useState<{
       order: OrderRow;
       vietqrUrl: string | null;
@@ -140,6 +149,31 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
     const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const presetLockRef = useRef(false);
+    const submitLockRef = useRef(false);
+    const parseReqIdRef = useRef(0);
+
+    useEffect(() => {
+      if (inputMode !== 'voice' && recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch {
+          // ignore cleanup stop errors
+        }
+        setIsListening(false);
+      }
+    }, [inputMode]);
+
+    useEffect(() => {
+      return () => {
+        if (recognitionRef.current) {
+          try {
+            recognitionRef.current.stop();
+          } catch {
+            // ignore unmount stop errors
+          }
+        }
+      };
+    }, []);
 
     async function runParseOrder(opts?: {
       mode?: 'chat' | 'handwritten' | 'voice';
@@ -159,6 +193,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
         return;
       }
 
+      const reqId = ++parseReqIdRef.current;
       setIsParsing(true);
       setSavedOrderResult(null);
       try {
@@ -174,18 +209,46 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
           }),
         });
         const data = await res.json();
+        if (reqId !== parseReqIdRef.current) return;
         if (!res.ok || !data.ok) {
           throw new Error(data.message || 'Không thể tách đơn hàng.');
         }
-        setDraft(data.parsed as NormalizedOrderDraft);
+
+        const parsed = data.parsed as NormalizedOrderDraft;
+        const nextWarnings: string[] = Array.isArray(data.warnings)
+          ? data.warnings
+          : Array.isArray(parsed.warnings)
+            ? parsed.warnings
+            : [];
+
+        if (!parsed.items || parsed.items.length === 0) {
+          toast.warning(
+            nextWarnings[0] ||
+              data.reasoningVi ||
+              'Không tìm thấy món nào trong tin nhắn — vui lòng nhập rõ tên món hoặc chọn từ thực đơn.'
+          );
+          return;
+        }
+
+        setDraft(parsed);
         setCashReceivedVnd(0);
+        setLargeOrderConfirmed(false);
+        setShowDebtQr(false);
         setDraftSourceType(mode);
         setReasoningVi(data.reasoningVi || '');
-        toast.success('Đã tách xong món và tính tiền tự động.');
+        setWarningsVi(nextWarnings);
+        if (nextWarnings.length > 0) {
+          toast.warning('Đã tách đơn xong — lưu ý kiểm tra cảnh báo ghi chú món.');
+        } else {
+          toast.success('Đã tách xong món và tính tiền tự động.');
+        }
       } catch (err) {
+        if (reqId !== parseReqIdRef.current) return;
         toast.error(err instanceof Error ? err.message : 'Lỗi phân tích đơn hàng.');
       } finally {
-        setIsParsing(false);
+        if (reqId === parseReqIdRef.current) {
+          setIsParsing(false);
+        }
       }
     }
 
@@ -224,14 +287,18 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
         }
       },
       resetView() {
+        parseReqIdRef.current += 1;
         setInputMode('chat');
         setTextInput('');
         setImagePreviewUrl(null);
         setImagePayload(null);
         setDraft(null);
         setCashReceivedVnd(0);
+        setLargeOrderConfirmed(false);
+        setShowDebtQr(false);
         setDraftSourceType('manual');
         setReasoningVi('');
+        setWarningsVi([]);
         setSavedOrderResult(null);
         setInspectedOrderId(null);
         setMenuCategory('all');
@@ -273,6 +340,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
     function handleQuickAddMenuItem(menuItem: MenuItemRow) {
       setSavedOrderResult(null);
       setReasoningVi('');
+      setShowDebtQr(false);
       if (!draft) {
         const nextDraft = recalculateDraft({
           tableOrChannel: 'Tại quầy',
@@ -288,6 +356,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
               modifiers: [],
               paymentSplitTag: 'shared',
               lineTotalVnd: menuItem.price_vnd,
+              isUnmatched: false,
             },
           ],
           subtotalVnd: menuItem.price_vnd,
@@ -298,10 +367,13 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
           transferAmountVnd: menuItem.price_vnd,
           paymentMethod: 'vietqr',
           unmatchedNotes: [],
+          warnings: [],
           confidence: 1,
         });
         setDraftSourceType('manual');
         setCashReceivedVnd(0);
+        setLargeOrderConfirmed(false);
+        setWarningsVi([]);
         setDraft(nextDraft);
         return;
       }
@@ -315,8 +387,8 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
               idx === existingIdx
                 ? {
                     ...item,
-                    quantity: item.quantity + 1,
-                    lineTotalVnd: (item.quantity + 1) * item.unitPriceVnd,
+                    quantity: Math.min(9999, item.quantity + 1),
+                    lineTotalVnd: Math.min(9999, item.quantity + 1) * item.unitPriceVnd,
                   }
                 : item
             )
@@ -332,19 +404,22 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                 modifiers: [],
                 paymentSplitTag: 'shared',
                 lineTotalVnd: menuItem.price_vnd,
+                isUnmatched: false,
               },
             ];
 
+      setLargeOrderConfirmed(false);
       setDraft(recalculateDraft({ ...draft, items: updatedItems }));
     }
 
     function updateItemQuantity(index: number, delta: number) {
       if (!draft) return;
       setSavedOrderResult(null);
+      setLargeOrderConfirmed(false);
       const updatedItems: NormalizedOrderItem[] = draft.items
         .map((item, idx) => {
           if (idx !== index) return item;
-          const quantity = Math.max(0, item.quantity + delta);
+          const quantity = Math.min(9999, Math.max(0, item.quantity + delta));
           return {
             ...item,
             quantity,
@@ -356,8 +431,60 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
       if (updatedItems.length === 0) {
         setDraft(null);
         setCashReceivedVnd(0);
+        setWarningsVi([]);
         return;
       }
+      setDraft(recalculateDraft({ ...draft, items: updatedItems }));
+    }
+
+    function setDirectItemQuantity(index: number, raw: string) {
+      if (!draft) return;
+      const digitsOnly = raw.replace(/\D/g, '');
+      setSavedOrderResult(null);
+      setLargeOrderConfirmed(false);
+      const qty = digitsOnly === '' ? 0 : Math.min(9999, Number(digitsOnly));
+      const updatedItems = draft.items.map((item, idx) =>
+        idx === index
+          ? {
+              ...item,
+              quantity: qty,
+              lineTotalVnd: qty * item.unitPriceVnd,
+            }
+          : item
+      );
+      setDraft(recalculateDraft({ ...draft, items: updatedItems }));
+    }
+
+    function commitItemQuantityOnBlur(index: number) {
+      if (!draft) return;
+      const target = draft.items[index];
+      if (!target || target.quantity > 0) return;
+      const remaining = draft.items.filter((_, idx) => idx !== index);
+      if (remaining.length === 0) {
+        setDraft(null);
+        setCashReceivedVnd(0);
+        setWarningsVi([]);
+        toast.info('Đã xóa hết món khỏi phiếu nháp.');
+        return;
+      }
+      setDraft(recalculateDraft({ ...draft, items: remaining }));
+      toast.info(`Đã xóa "${target.matchedItemName}" khỏi phiếu.`);
+    }
+
+    function updateItemUnitPrice(index: number, rawPrice: string) {
+      if (!draft) return;
+      const cleanPrice = Math.max(0, Math.min(99_999_999, Math.round(Number(rawPrice) || 0)));
+      setSavedOrderResult(null);
+      setLargeOrderConfirmed(false);
+      const updatedItems = draft.items.map((item, idx) =>
+        idx === index
+          ? {
+              ...item,
+              unitPriceVnd: cleanPrice,
+              lineTotalVnd: item.quantity * cleanPrice,
+            }
+          : item
+      );
       setDraft(recalculateDraft({ ...draft, items: updatedItems }));
     }
 
@@ -365,6 +492,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
       if (!draft) return;
       setSavedOrderResult(null);
       setCashReceivedVnd(0);
+      setShowDebtQr(false);
       const base = { ...draft, paymentMethod: method };
       if (method === 'split' && base.cashAmountVnd === 0) {
         const cashItemsTotal = base.items
@@ -376,7 +504,27 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
     }
 
     async function handleSaveOrder() {
-      if (!draft) return;
+      if (!draft || submitLockRef.current || isSaving) return;
+
+      const validItems = draft.items.filter((i) => i.quantity > 0);
+      if (validItems.length === 0) {
+        toast.error('Đơn hàng phải có ít nhất 1 món hợp lệ.');
+        return;
+      }
+
+      if (draft.paymentMethod === 'debt' && !draft.customerName?.trim()) {
+        toast.error('Vui lòng nhập tên khách hàng trước khi ghi sổ nợ.');
+        return;
+      }
+
+      const needsLargeConfirm =
+        validItems.some((i) => i.quantity >= 50) || draft.totalVnd >= 5_000_000;
+      if (needsLargeConfirm && !largeOrderConfirmed) {
+        toast.warning('Đơn hàng số lượng lớn — hãy tích xác nhận kiểm tra lại số lượng và tổng tiền.');
+        return;
+      }
+
+      submitLockRef.current = true;
       setIsSaving(true);
       try {
         const res = await fetch('/api/orders', {
@@ -384,6 +532,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ...draft,
+            items: validItems,
             sourceType: draftSourceType,
             rawInput:
               draftSourceType === 'handwritten'
@@ -398,12 +547,23 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
           throw new Error(data.message || 'Không thể lưu đơn hàng.');
         }
         const savedOrder = data.order as OrderRow;
+
+        // Auto-clear active draft cart & AI inputs immediately to prevent accidental double-billing
+        setDraft(null);
+        setTextInput('');
+        setImagePreviewUrl(null);
+        setImagePayload(null);
+        setReasoningVi('');
+        setWarningsVi([]);
+        setCashReceivedVnd(0);
+        setLargeOrderConfirmed(false);
+        setShowDebtQr(false);
+
         setSavedOrderResult({
           order: savedOrder,
           vietqrUrl: (data.vietqrUrl as string | null) ?? null,
         });
         setInspectedOrderId(savedOrder.id);
-        setCashReceivedVnd(0);
 
         if (savedOrder.payment_method === 'cash') {
           toast.success(
@@ -422,6 +582,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Lỗi lưu đơn hàng.');
       } finally {
+        submitLockRef.current = false;
         setIsSaving(false);
       }
     }
@@ -488,9 +649,15 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
         }
         setTextInput(transcript.trim());
       };
-      recognition.onerror = () => {
+      recognition.onerror = (event) => {
         setIsListening(false);
-        toast.error('Không thu được âm thanh micro. Hãy thử lại hoặc kiểm tra quyền micro.');
+        if (event?.error === 'not-allowed' || event?.error === 'service-not-allowed') {
+          toast.error('Trình duyệt chưa được cấp quyền Micro. Hãy bật quyền Micro để đọc món.');
+        } else if (event?.error === 'no-speech') {
+          toast.info('Chưa nghe thấy giọng nói, hãy bấm lại và đọc gần micro hơn.');
+        } else {
+          toast.error('Không thu được âm thanh micro. Hãy thử lại hoặc nhập trực tiếp.');
+        }
       };
       recognition.onend = () => {
         setIsListening(false);
@@ -580,23 +747,18 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
               : selectedHistoryOrder.total_vnd
             : 0;
 
-    const activeTerminalQrUrl = terminalIsCashOnly
-      ? null
-      : savedOrderResult
-        ? savedOrderResult.vietqrUrl
-        : draft
-          ? draftTransferVnd > 0
-            ? buildVietQRUrl({ amount: draftTransferVnd, addInfo: 'TAM TINH DON MOI' })
-            : null
-          : selectedHistoryOrder
-            ? selectedHistoryOrder.vietqr_url ||
-              (activeTerminalAmountVnd > 0
-                ? buildVietQRUrl({
-                    amount: activeTerminalAmountVnd,
-                    addInfo: selectedHistoryOrder.order_code,
-                  })
-                : null)
-            : null;
+    const activeTerminalHasLocalQr =
+      !terminalIsCashOnly &&
+      activePaymentMethod !== 'debt' &&
+      activeTerminalAmountVnd > 0 &&
+      Boolean(savedOrderResult?.order || draft || selectedHistoryOrder);
+
+    const isLargeOrder = Boolean(
+      draft && (draft.items.some((i) => i.quantity >= 50) || draft.totalVnd >= 5_000_000)
+    );
+    const isDebtMissingCustomer = Boolean(
+      draft && draft.paymentMethod === 'debt' && !draft.customerName?.trim()
+    );
 
     return (
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
@@ -902,6 +1064,8 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                   onClick={() => {
                     setDraft(null);
                     setCashReceivedVnd(0);
+                    setLargeOrderConfirmed(false);
+                    setWarningsVi([]);
                     setSavedOrderResult(null);
                   }}
                   aria-label="Hủy phiếu đang lập"
@@ -911,6 +1075,17 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                 </button>
               </div>
 
+              {warningsVi.length > 0 && (
+                <div className="rounded-lg border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2 space-y-1 text-xs text-[#92400E]">
+                  {warningsVi.map((w, idx) => (
+                    <div key={idx} className="flex items-start gap-1.5">
+                      <AlertTriangle className="size-3.5 shrink-0 mt-0.5 text-[#B45309]" aria-hidden="true" />
+                      <span>{w}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <label htmlFor="draft-channel" className="text-[11px] font-medium text-muted-foreground">
@@ -918,6 +1093,7 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                   </label>
                   <Input
                     id="draft-channel"
+                    maxLength={60}
                     value={draft.tableOrChannel}
                     onChange={(e) => {
                       setSavedOrderResult(null);
@@ -928,18 +1104,27 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                 </div>
                 <div>
                   <label htmlFor="draft-customer" className="text-[11px] font-medium text-muted-foreground">
-                    Khách hàng
+                    Khách hàng {draft.paymentMethod === 'debt' && <span className="text-[#BE123C]">*</span>}
                   </label>
                   <Input
                     id="draft-customer"
+                    maxLength={80}
                     value={draft.customerName ?? ''}
-                    placeholder="Khách lẻ"
+                    placeholder={draft.paymentMethod === 'debt' ? 'Bắt buộc nhập tên khách' : 'Khách lẻ'}
+                    aria-invalid={isDebtMissingCustomer}
                     onChange={(e) => {
                       setSavedOrderResult(null);
                       setDraft({ ...draft, customerName: e.target.value || null });
                     }}
-                    className="mt-1 h-9 bg-white border-[#DFD1DB] rounded-lg text-xs"
+                    className={`mt-1 h-9 bg-white rounded-lg text-xs ${
+                      isDebtMissingCustomer ? 'border-[#BE123C] focus-visible:ring-[#BE123C]' : 'border-[#DFD1DB]'
+                    }`}
                   />
+                  {isDebtMissingCustomer && (
+                    <p className="mt-1 text-[10px] font-medium text-[#BE123C]">
+                      Bắt buộc nhập tên khách để ghi sổ nợ.
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -947,14 +1132,36 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                 {draft.items.map((item, idx) => (
                   <div
                     key={`${item.matchedItemName}-${idx}`}
-                    className="flex items-center justify-between gap-2 py-2.5"
+                    className={`flex items-center justify-between gap-2 py-2.5 ${
+                      item.isUnmatched ? 'bg-[#FFFBEB]/60 -mx-3 px-3' : ''
+                    }`}
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-semibold text-foreground truncate">
-                        {item.matchedItemName}
-                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs font-semibold text-foreground truncate">
+                          {item.matchedItemName}
+                        </p>
+                        {item.isUnmatched && (
+                          <span className="rounded bg-[#FEF3C7] border border-[#FDE68A] px-1.5 py-0.5 text-[10px] font-semibold text-[#92400E] shrink-0">
+                            Ngoài thực đơn
+                          </span>
+                        )}
+                      </div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-                        <span className="font-sans tabular-nums">{formatVND(item.unitPriceVnd)}</span>
+                        {item.isUnmatched ? (
+                          <Input
+                            type="number"
+                            min={0}
+                            step={1000}
+                            aria-label={`Đơn giá ${item.matchedItemName}`}
+                            placeholder="Nhập giá"
+                            value={item.unitPriceVnd > 0 ? item.unitPriceVnd : ''}
+                            onChange={(e) => updateItemUnitPrice(idx, e.target.value)}
+                            className="h-6 w-24 bg-white border-[#FDE68A] px-1.5 text-[11px] font-sans tabular-nums rounded"
+                          />
+                        ) : (
+                          <span className="font-sans tabular-nums">{formatVND(item.unitPriceVnd)}</span>
+                        )}
                         {item.modifiers.map((mod, mIdx) => (
                           <span
                             key={mIdx}
@@ -966,18 +1173,25 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0">
                       <button
                         type="button"
                         onClick={() => updateItemQuantity(idx, -1)}
                         aria-label={`Giảm ${item.matchedItemName}`}
                         className="size-7 rounded-md border border-[#EAE0E7] bg-white inline-flex items-center justify-center hover:bg-[#FDF2F8] hover:text-[#A50064] cursor-pointer"
                       >
-                        {item.quantity === 1 ? <Trash2 className="size-3" /> : <Minus className="size-3" />}
+                        {item.quantity <= 1 ? <Trash2 className="size-3" /> : <Minus className="size-3" />}
                       </button>
-                      <span className="w-5 text-center font-sans tabular-nums text-xs font-semibold">
-                        {item.quantity}
-                      </span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        aria-label={`Số lượng ${item.matchedItemName}`}
+                        value={item.quantity === 0 ? '' : String(item.quantity)}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => setDirectItemQuantity(idx, e.target.value)}
+                        onBlur={() => commitItemQuantityOnBlur(idx)}
+                        className="h-7 w-11 rounded-md border border-[#DFD1DB] bg-white text-center font-sans tabular-nums text-xs font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      />
                       <button
                         type="button"
                         onClick={() => updateItemQuantity(idx, 1)}
@@ -1092,10 +1306,30 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                 )}
               </div>
 
+              {isLargeOrder && (
+                <div className="rounded-lg border border-[#F59E0B] bg-[#FFFBEB] p-3 space-y-2 text-xs text-[#92400E]">
+                  <div className="flex items-start gap-2 font-semibold">
+                    <AlertTriangle className="size-4 shrink-0 text-[#B45309] mt-0.5" aria-hidden="true" />
+                    <span>
+                      Đơn hàng số lượng lớn — Kiểm tra lại số lượng và tổng tiền trước khi xác nhận.
+                    </span>
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer select-none font-medium">
+                    <input
+                      type="checkbox"
+                      checked={largeOrderConfirmed}
+                      onChange={(e) => setLargeOrderConfirmed(e.target.checked)}
+                      className="size-4 rounded border-[#D97706] accent-[#A50064]"
+                    />
+                    <span>Tôi đã kiểm tra kỹ số lượng và tổng tiền ({formatVND(draft.totalVnd)})</span>
+                  </label>
+                </div>
+              )}
+
               <Button
                 type="button"
                 onClick={handleSaveOrder}
-                disabled={isSaving}
+                disabled={isSaving || isDebtMissingCustomer || (isLargeOrder && !largeOrderConfirmed)}
                 className={`min-h-[42px] w-full rounded-lg font-semibold text-sm cursor-pointer shadow-xs ${
                   draft.paymentMethod === 'cash'
                     ? 'bg-[#0D7A5F] hover:bg-[#0A644E] text-white'
@@ -1264,12 +1498,12 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                     </div>
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-[#A7F3D0] bg-[#ECFDF5]/90 px-4 py-6 text-center space-y-2">
+                  <div className="rounded-xl border border-[#A7F3D0] bg-[#ECFDF5]/90 px-4 py-5 text-center space-y-2.5">
                     <div className="mx-auto size-10 rounded-full bg-white text-[#0F766E] border border-[#A7F3D0] flex items-center justify-center">
                       <CheckCircle2 className="size-5" aria-hidden="true" />
                     </div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-[#047857]">
-                      Đã thu đủ tiền mặt
+                      Phiếu thu tiền mặt — Đã thanh toán
                     </p>
                     <p className="font-sans tabular-nums text-2xl font-bold text-[#065F46]">
                       {formatVND(activeCashAmountVnd)}
@@ -1280,12 +1514,129 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                           cleanCustomerDisplay(activeTerminalOrder.table_or_channel)}
                       </p>
                     )}
-                    <p className="text-[11px] text-[#047857]/90 pt-1">
-                      Đã cộng trực tiếp vào doanh thu tiền mặt trong ca.
-                    </p>
+                    <div className="flex flex-wrap justify-center gap-2 pt-1">
+                      {activeTerminalOrder && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => onInspectOrderDetail(activeTerminalOrder.id)}
+                          className="min-h-[34px] rounded-lg border-[#A7F3D0] bg-white text-[#065F46] hover:bg-[#ECFDF5] text-xs font-semibold cursor-pointer"
+                        >
+                          <FileText className="size-3.5" aria-hidden="true" />
+                          <span>Xem chi tiết đơn</span>
+                        </Button>
+                      )}
+                      {savedOrderResult && (
+                        <Button
+                          type="button"
+                          onClick={() => setSavedOrderResult(null)}
+                          className="min-h-[34px] rounded-lg bg-[#0D7A5F] hover:bg-[#0A644E] text-white text-xs font-semibold cursor-pointer"
+                        >
+                          Tạo đơn mới
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 )
-              ) : activeTerminalQrUrl ? (
+              ) : activePaymentMethod === 'debt' ? (
+                draft && !savedOrderResult ? (
+                  <div className="rounded-xl border border-[#FDE68A] bg-[#FFFBEB] px-4 py-5 text-center space-y-2">
+                    <div className="mx-auto size-10 rounded-full bg-white text-[#B45309] border border-[#FDE68A] flex items-center justify-center">
+                      <BookOpen className="size-5" aria-hidden="true" />
+                    </div>
+                    <p className="text-xs font-semibold text-[#92400E]">Sẵn sàng ghi sổ công nợ</p>
+                    <p className="font-sans tabular-nums text-2xl font-bold text-[#92400E]">
+                      {formatVND(draft.totalVnd)}
+                    </p>
+                    <p className="text-xs text-[#B45309]">
+                      {draft.customerName?.trim()
+                        ? `Khách hàng: ${draft.customerName.trim()}`
+                        : 'Hãy nhập tên khách hàng bên trái trước khi ghi sổ.'}
+                    </p>
+                  </div>
+                ) : activeTerminalOrder ? (
+                  <div className="space-y-3">
+                    <div className="rounded-xl border border-[#FDE68A] bg-[#FFFBEB] px-4 py-5 text-center space-y-2">
+                      <div className="mx-auto size-10 rounded-full bg-white text-[#B45309] border border-[#FDE68A] flex items-center justify-center">
+                        <BookOpen className="size-5" aria-hidden="true" />
+                      </div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[#92400E]">
+                        Đã ghi sổ nợ • {activeTerminalOrder.order_code}
+                      </p>
+                      <p className="font-sans tabular-nums text-2xl font-bold text-[#92400E]">
+                        {formatVND(activeTerminalOrder.total_vnd)}
+                      </p>
+                      <p className="text-xs text-[#B45309]">
+                        {cleanCustomerDisplay(activeTerminalOrder.customer_name) ||
+                          cleanCustomerDisplay(activeTerminalOrder.table_or_channel)}
+                      </p>
+
+                      <div className="flex flex-wrap justify-center gap-2 pt-1.5">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            const msg = formatTransferReminderText({
+                              customerName:
+                                cleanCustomerDisplay(activeTerminalOrder.customer_name) || 'anh/chị',
+                              orderCode: activeTerminalOrder.order_code,
+                              amountVnd: activeTerminalOrder.total_vnd,
+                              notes: activeTerminalOrder.notes,
+                            });
+                            void handleCopyCode(msg);
+                          }}
+                          className="min-h-[36px] rounded-lg border-[#FDE68A] bg-white text-[#92400E] hover:bg-[#FEF3C7] text-xs font-semibold cursor-pointer"
+                        >
+                          <Copy className="size-3.5" aria-hidden="true" />
+                          <span>Chép tin nhắc nợ Zalo</span>
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setShowDebtQr((prev) => !prev)}
+                          className="min-h-[36px] rounded-lg border-[#EAE0E7] bg-white text-foreground hover:bg-[#FDF2F8] text-xs font-semibold cursor-pointer"
+                        >
+                          <QrCode className="size-3.5 text-[#A50064]" aria-hidden="true" />
+                          <span>{showDebtQr ? 'Ẩn QR' : 'Xem mã QR nhắc nợ'}</span>
+                        </Button>
+                      </div>
+                    </div>
+
+                    {showDebtQr && (
+                      <div className="flex justify-center">
+                        <LocalVietQRCode
+                          amount={activeTerminalOrder.total_vnd}
+                          addInfo={activeTerminalOrder.order_code}
+                          orderCode={activeTerminalOrder.order_code}
+                          compact
+                          showDownload
+                        />
+                      </div>
+                    )}
+
+                    <div className="flex justify-between gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => onInspectOrderDetail(activeTerminalOrder.id)}
+                        className="min-h-[36px] flex-1 rounded-lg border-[#EAE0E7] bg-white text-xs font-semibold cursor-pointer"
+                      >
+                        <FileText className="size-3.5" aria-hidden="true" />
+                        <span>Xem chi tiết đơn</span>
+                      </Button>
+                      {savedOrderResult && (
+                        <Button
+                          type="button"
+                          onClick={() => setSavedOrderResult(null)}
+                          className="min-h-[36px] flex-1 rounded-lg bg-primary text-white text-xs font-semibold cursor-pointer"
+                        >
+                          Tạo đơn mới
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ) : null
+              ) : activeTerminalHasLocalQr ? (
                 <div className="flex flex-col items-center space-y-3">
                   {activePaymentMethod === 'split' && (
                     <div className="w-full grid grid-cols-2 gap-2 text-xs">
@@ -1304,16 +1655,12 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                     </div>
                   )}
 
-                  <div className="rounded-xl border border-[#EAE0E7] bg-white p-2.5 shadow-xs">
-                    <Image
-                      src={activeTerminalQrUrl}
-                      alt="Mã VietQR thanh toán"
-                      width={192}
-                      height={224}
-                      unoptimized
-                      className="w-44 h-auto min-h-[190px] object-contain"
-                    />
-                  </div>
+                  <LocalVietQRCode
+                    amount={activeTerminalAmountVnd}
+                    addInfo={activeTerminalOrder?.order_code ?? 'TAM TINH DON MOI'}
+                    orderCode={activeTerminalOrder?.order_code}
+                    showDownload
+                  />
 
                   <div className="w-full flex items-center justify-between gap-2 rounded-lg border border-[#F0D2E2] bg-white/95 px-3.5 py-2.5">
                     <div className="min-w-0">
@@ -1332,17 +1679,40 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                       </p>
                     </div>
 
-                    {activeTerminalOrder && activePaymentMethod !== 'debt' && (
-                      <Button
-                        type="button"
-                        onClick={() => onProceedToReceiptVerify(activeTerminalOrder)}
-                        className="min-h-[36px] rounded-lg border border-[#EAB8D2] bg-[#FDF2F8] text-[#A50064] hover:bg-[#FCE7F3] text-xs font-semibold cursor-pointer shrink-0 shadow-none"
-                      >
-                        <ShieldCheck className="size-3.5 text-[#A50064]" aria-hidden="true" />
-                        <span>Kiểm duyệt CK</span>
-                      </Button>
-                    )}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {activeTerminalOrder && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => onInspectOrderDetail(activeTerminalOrder.id)}
+                          className="min-h-[36px] rounded-lg border-[#EAE0E7] bg-white text-xs font-semibold cursor-pointer"
+                        >
+                          Chi tiết
+                        </Button>
+                      )}
+                      {activeTerminalOrder && (
+                        <Button
+                          type="button"
+                          onClick={() => onProceedToReceiptVerify(activeTerminalOrder)}
+                          className="min-h-[36px] rounded-lg border border-[#EAB8D2] bg-[#FDF2F8] text-[#A50064] hover:bg-[#FCE7F3] text-xs font-semibold cursor-pointer shadow-none"
+                        >
+                          <ShieldCheck className="size-3.5 text-[#A50064]" aria-hidden="true" />
+                          <span>Kiểm duyệt CK</span>
+                        </Button>
+                      )}
+                    </div>
                   </div>
+
+                  {savedOrderResult && !draft && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setSavedOrderResult(null)}
+                      className="min-h-[36px] w-full rounded-lg border-[#EAE0E7] bg-white text-xs font-semibold cursor-pointer"
+                    >
+                      Tạo đơn mới cho khách tiếp theo
+                    </Button>
+                  )}
                 </div>
               ) : (
                 <div className="rounded-lg border border-[#F0D2E2] bg-white/80 px-4 py-6 text-center text-xs text-muted-foreground">
@@ -1383,30 +1753,22 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                 return (
                   <div
                     key={order.id}
-                    onClick={() => {
-                      setDraft(null);
-                      setCashReceivedVnd(0);
-                      setSavedOrderResult(null);
-                      setInspectedOrderId(order.id);
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setDraft(null);
-                        setCashReceivedVnd(0);
-                        setSavedOrderResult(null);
-                        setInspectedOrderId(order.id);
-                      }
-                    }}
-                    className={`py-2.5 px-2.5 rounded-lg flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                    className={`py-2.5 px-2.5 rounded-lg flex items-center justify-between gap-2 transition-colors ${
                       isSelected
                         ? 'bg-[#FDF2F8] border border-[#F3D0E2]'
                         : 'hover:bg-[#FBF8FA] border border-transparent'
                     }`}
                   >
-                    <div className="min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDraft(null);
+                        setCashReceivedVnd(0);
+                        setSavedOrderResult(null);
+                        setInspectedOrderId(order.id);
+                      }}
+                      className="min-w-0 flex-1 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+                    >
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs font-bold text-foreground">
                           {order.order_code}
@@ -1418,19 +1780,23 @@ export const OrderIntakePanel = forwardRef<OrderIntakeHandle, OrderIntakePanelPr
                         {showCustomerSuffix ? ` • ${displayCustomer}` : ''}
                         {` • ${methodLabel}`}
                       </p>
-                    </div>
+                    </button>
 
-                    <div className="text-right shrink-0 flex items-center gap-2">
+                    <div className="text-right shrink-0 flex items-center gap-1.5">
                       <span className="font-sans tabular-nums text-xs font-bold text-foreground">
                         {formatVND(order.total_vnd)}
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => onInspectOrderDetail(order.id)}
+                        className="min-h-[28px] px-2 rounded-md border border-[#EAE0E7] bg-white text-[11px] font-medium text-muted-foreground hover:text-[#A50064] hover:border-[#EAB8D2] cursor-pointer"
+                      >
+                        Chi tiết
+                      </button>
                       {order.status === 'pending_payment' && order.payment_method !== 'cash' && (
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onProceedToReceiptVerify(order);
-                          }}
+                          onClick={() => onProceedToReceiptVerify(order)}
                           className="min-h-[28px] px-2 rounded-md border border-[#EAB8D2] bg-[#FDF2F8] text-[11px] font-semibold text-primary hover:bg-[#FCE7F3] cursor-pointer"
                         >
                           Soát bill

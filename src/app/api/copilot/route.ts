@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { AIProviderError, generateStructuredJSON } from '@/lib/ai/provider';
 import { CopilotActionSchema } from '@/lib/ai/schemas';
 import { createSupabaseAdminClient, SupabaseConfigError } from '@/lib/supabase/server';
-import { buildVietQRUrl, formatVND } from '@/lib/vietqr';
+import { buildVietQRPayload, formatTransferReminderText, formatVND } from '@/lib/vietqr';
 import type {
   CustomerDebtRow,
   MenuItemRow,
@@ -84,12 +84,15 @@ export async function POST(request: Request) {
     >();
 
     const debtsSnapshot = openDebts.map((d) => {
-      const canonicalUrl =
-        d.vietqr_url && d.vietqr_url.startsWith('https://img.vietqr.io/')
-          ? d.vietqr_url
-          : buildVietQRUrl({ amount: d.amount_due_vnd, addInfo: d.order_code });
+      const localPayload = buildVietQRPayload({ amount: d.amount_due_vnd, addInfo: d.order_code });
+      const transferText = formatTransferReminderText({
+        customerName: d.customer_name,
+        orderCode: d.order_code,
+        amountVnd: d.amount_due_vnd,
+        notes: d.notes,
+      });
       verifiedDebtUrlMap.set(d.order_code.toUpperCase(), {
-        vietqrUrl: canonicalUrl,
+        vietqrUrl: localPayload,
         customerName: d.customer_name,
         channelHandle: d.channel_handle,
         amountDueVnd: d.amount_due_vnd,
@@ -100,7 +103,8 @@ export async function POST(request: Request) {
         channelHandle: d.channel_handle,
         amountDueVnd: d.amount_due_vnd,
         notes: d.notes,
-        vietqrUrl: canonicalUrl,
+        transferGuide: transferText,
+        vietqrUrl: '',
       };
     });
 
@@ -130,12 +134,12 @@ export async function POST(request: Request) {
     };
 
     const systemPrompt = [
-      'Bạn là Trợ lý Điều hành thông minh (Merchant AI Copilot) cho chủ quán "Quán Cà Phê Demo".',
+      'Bạn là Trợ lý Điều hành thông minh (Merchant AI Copilot) cho chủ quán "Tiệm Cà Phê Mộc".',
       'Trả lời hoàn toàn bằng tiếng Việt tự nhiên, súc tích, thân thiện và bám sát tuyệt đối số liệu thật dưới đây (không bịa số).',
       'Quy tắc bắt buộc:',
       '- Liệt kê các công cụ logic bạn đã tham chiếu vào `invokedTools` (`get_daily_revenue`, `get_slow_moving_items`, `get_unpaid_debts`).',
       '- Nếu có món bán chậm (dailySoldCount <= 5), điền `slowMovingItems` kèm gợi ý đẩy combo giờ chiều thực tế.',
-      '- Với mỗi khách đang nợ trong `unpaidDebts`, khi người dùng hỏi về công nợ/nhắc nợ hoặc tổng kết vận hành, hãy soạn tin nhắn Zalo/Messenger lịch sự, dễ thương để chủ quán copy gửi ngay vào `debtReminders` kèm đúng `orderCode` và `vietqrUrl` có sẵn trong snapshot (KHÔNG chèn URL raw https://img.vietqr.io/... vào nội dung text `message`).',
+      '- Với mỗi khách đang nợ trong `unpaidDebts`, khi người dùng hỏi về công nợ/nhắc nợ hoặc tổng kết vận hành, hãy soạn tin nhắn Zalo/Messenger lịch sự, dễ thương để chủ quán copy gửi ngay vào `debtReminders` kèm đúng `orderCode` (KHÔNG chèn bất kỳ đường link URL https://img.vietqr.io/... nào vào `messageVi`; có thể nêu rõ ngân hàng/STK/nội dung CK nếu cần).',
       '- Mọi số tiền hiển thị trong văn bản dùng định dạng Việt Nam (vd: 96.000 ₫).',
       `Dữ liệu vận hành trực tiếp từ PostgreSQL: ${JSON.stringify(operationalSnapshot)}`,
     ].join('\n');

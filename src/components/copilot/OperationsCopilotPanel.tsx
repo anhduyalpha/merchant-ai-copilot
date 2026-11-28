@@ -1,7 +1,6 @@
 'use client';
 
-import Image from 'next/image';
-import { forwardRef, useImperativeHandle, useState } from 'react';
+import { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import {
   Check,
   CheckCircle2,
@@ -14,11 +13,12 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { StoreSummary } from '@/components/MerchantWorkspace';
+import { LocalVietQRCode } from '@/components/pos/LocalVietQRCode';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { CopilotAction } from '@/lib/ai/schemas';
 import { cleanChannelDisplay, cleanCustomerDisplay, cleanMerchantCopy } from '@/lib/utils';
-import { formatVND } from '@/lib/vietqr';
+import { formatTransferReminderText, formatVND } from '@/lib/vietqr';
 import type { CustomerDebtRow, MenuItemRow } from '@/types/database';
 
 export interface OperationsCopilotHandle {
@@ -31,6 +31,7 @@ interface OperationsCopilotPanelProps {
   menuItems: MenuItemRow[];
   debts: CustomerDebtRow[];
   onDebtSettled: () => Promise<void>;
+  onInspectOrderDetail: (orderIdOrCode: string) => void;
 }
 
 const QUICK_PROMPTS: ReadonlyArray<{ label: string; prompt: string }> = [
@@ -71,13 +72,14 @@ function stripRawQrUrl(text: string): string {
 export const OperationsCopilotPanel = forwardRef<
   OperationsCopilotHandle,
   OperationsCopilotPanelProps
->(function OperationsCopilotPanel({ summary, menuItems, debts, onDebtSettled }, ref) {
+>(function OperationsCopilotPanel({ summary, menuItems, debts, onDebtSettled, onInspectOrderDetail }, ref) {
   const [prompt, setPrompt] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [settlingId, setSettlingId] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [openQrCode, setOpenQrCode] = useState<string | null>(null);
   const [copilotData, setCopilotData] = useState<CopilotAction | null>(null);
+  const copilotReqIdRef = useRef(0);
 
   async function runCopilot(promptText: string) {
     const clean = promptText.trim();
@@ -86,6 +88,7 @@ export const OperationsCopilotPanel = forwardRef<
       return;
     }
 
+    const reqId = ++copilotReqIdRef.current;
     setIsLoading(true);
     try {
       const res = await fetch('/api/copilot', {
@@ -94,15 +97,19 @@ export const OperationsCopilotPanel = forwardRef<
         body: JSON.stringify({ prompt: clean }),
       });
       const data = await res.json();
+      if (reqId !== copilotReqIdRef.current) return;
       if (!res.ok || !data.ok) {
         throw new Error(data.message || 'Chưa nhận được phản hồi phân tích.');
       }
       setCopilotData(data.copilot as CopilotAction);
       toast.success('Đã tổng hợp báo cáo từ dữ liệu quán.');
     } catch (err) {
+      if (reqId !== copilotReqIdRef.current) return;
       toast.error(err instanceof Error ? err.message : 'Lỗi phân tích dữ liệu.');
     } finally {
-      setIsLoading(false);
+      if (reqId === copilotReqIdRef.current) {
+        setIsLoading(false);
+      }
     }
   }
 
@@ -112,6 +119,7 @@ export const OperationsCopilotPanel = forwardRef<
       void runCopilot(promptText);
     },
     resetView() {
+      copilotReqIdRef.current += 1;
       setPrompt('');
       setCopilotData(null);
       setOpenQrCode(null);
@@ -498,90 +506,103 @@ export const OperationsCopilotPanel = forwardRef<
             </div>
 
             <div className="space-y-3">
-              {debts.map((debt) => {
-                const aiDraft = reminderDraftByOrder.get(debt.order_code.toUpperCase());
-                const customerLabel = cleanCustomerDisplay(debt.customer_name);
-                const channelLabel = cleanChannelDisplay(debt.channel_handle);
-                const defaultMsg = `Dạ em chào ${customerLabel}, em gửi lại mình hóa đơn ${debt.order_code} (${debt.notes ?? 'đơn tại quán'}) số tiền ${formatVND(debt.amount_due_vnd)} ạ. Mình quét mã VietQR giúp quán nhé: ${debt.vietqr_url ?? ''}`;
-                const copyText = aiDraft
-                  ? `${cleanMerchantCopy(aiDraft.messageVi)}\nMã VietQR thanh toán: ${aiDraft.vietqrUrl}`
-                  : defaultMsg;
-                const previewText = aiDraft ? stripRawQrUrl(cleanMerchantCopy(aiDraft.messageVi)) : null;
-                const isSettled = debt.status === 'settled';
-                const qrToShow = aiDraft?.vietqrUrl ?? debt.vietqr_url;
+              {debts.length === 0 ? (
+                <div className="rounded-lg border border-[#EAE0E7] bg-[#FBF8FA] px-4 py-6 text-center text-xs text-muted-foreground">
+                  Chưa có khách nào ghi sổ công nợ trong ca này.
+                </div>
+              ) : (
+                debts.map((debt) => {
+                  const aiDraft = reminderDraftByOrder.get(debt.order_code.toUpperCase());
+                  const customerLabel = cleanCustomerDisplay(debt.customer_name);
+                  const channelLabel = cleanChannelDisplay(debt.channel_handle);
+                  const fallbackTransferText = formatTransferReminderText({
+                    customerName: customerLabel,
+                    orderCode: debt.order_code,
+                    amountVnd: debt.amount_due_vnd,
+                    notes: debt.notes,
+                  });
+                  const previewText = aiDraft
+                    ? stripRawQrUrl(cleanMerchantCopy(aiDraft.messageVi))
+                    : null;
+                  const copyText = previewText
+                    ? `${previewText}\n${fallbackTransferText.split('\n').slice(1).join('\n')}`
+                    : fallbackTransferText;
+                  const isSettled = debt.status === 'settled';
 
-                return (
-                  <div
-                    key={debt.id}
-                    className="rounded-lg border border-[#EAE0E7] bg-[#FBF8FA]/60 p-3.5 space-y-3"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-semibold text-foreground">
-                            {customerLabel}
-                          </span>
-                          <span className="rounded bg-[#F5EEF3] px-1.5 py-0.5 font-mono text-[11px] font-medium text-muted-foreground">
-                            {debt.order_code}
+                  return (
+                    <div
+                      key={debt.id}
+                      className="rounded-lg border border-[#EAE0E7] bg-[#FBF8FA]/60 p-3.5 space-y-3"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-semibold text-foreground">
+                              {customerLabel}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => onInspectOrderDetail(debt.order_id ?? debt.order_code)}
+                              className="rounded bg-[#F5EEF3] px-1.5 py-0.5 font-mono text-[11px] font-semibold text-[#A50064] hover:bg-[#FDF2F8] hover:underline cursor-pointer"
+                            >
+                              {debt.order_code}
+                            </button>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">{channelLabel}</p>
+                          {debt.notes && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{debt.notes}</p>
+                          )}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-sans tabular-nums text-sm font-bold text-foreground">
+                            {formatVND(debt.amount_due_vnd)}
+                          </p>
+                          <span
+                            className={`mt-1 inline-flex items-center gap-1 text-[11px] font-medium ${
+                              isSettled ? 'text-[#0F766E]' : 'text-[#B45309]'
+                            }`}
+                          >
+                            <span
+                              className={`size-1.5 rounded-full ${isSettled ? 'bg-[#0F766E]' : 'bg-[#B45309]'}`}
+                              aria-hidden="true"
+                            />
+                            {isSettled ? 'Đã tất toán' : 'Chưa trả'}
                           </span>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">{channelLabel}</p>
-                        {debt.notes && (
-                          <p className="text-xs text-muted-foreground mt-0.5">{debt.notes}</p>
-                        )}
                       </div>
-                      <div className="text-right shrink-0">
-                        <p className="font-sans tabular-nums text-sm font-bold text-foreground">
-                          {formatVND(debt.amount_due_vnd)}
-                        </p>
-                        <span
-                          className={`mt-1 inline-flex items-center gap-1 text-[11px] font-medium ${
-                            isSettled ? 'text-[#0F766E]' : 'text-[#B45309]'
-                          }`}
-                        >
-                          <span
-                            className={`size-1.5 rounded-full ${isSettled ? 'bg-[#0F766E]' : 'bg-[#B45309]'}`}
-                            aria-hidden="true"
+
+                      {previewText && (
+                        <div className="rounded-lg bg-white border border-[#EAE0E7] p-2.5 text-xs text-foreground leading-relaxed break-words [overflow-wrap:anywhere]">
+                          {previewText}
+                        </div>
+                      )}
+
+                      {openQrCode === debt.order_code && (
+                        <div className="flex justify-center rounded-lg border border-[#EAE0E7] bg-white p-3">
+                          <LocalVietQRCode
+                            amount={debt.amount_due_vnd}
+                            addInfo={debt.order_code}
+                            orderCode={debt.order_code}
+                            compact
+                            showDownload
                           />
-                          {isSettled ? 'Đã tất toán' : 'Chưa trả'}
-                        </span>
-                      </div>
-                    </div>
+                        </div>
+                      )}
 
-                    {previewText && (
-                      <div className="rounded-lg bg-white border border-[#EAE0E7] p-2.5 text-xs text-foreground leading-relaxed break-words [overflow-wrap:anywhere]">
-                        {previewText}
-                      </div>
-                    )}
-
-                    {openQrCode === debt.order_code && qrToShow && (
-                      <div className="flex justify-center rounded-lg border border-[#EAE0E7] bg-white p-2.5">
-                        <Image
-                          src={qrToShow}
-                          alt={`Mã VietQR đơn ${debt.order_code}`}
-                          width={176}
-                          height={208}
-                          unoptimized
-                          className="w-44 h-auto rounded"
-                        />
-                      </div>
-                    )}
-
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => void handleCopyReminder(debt.order_code, copyText)}
-                        className="min-h-[38px] flex-1 rounded-lg border-[#EAE0E7] bg-white text-foreground hover:bg-[#FDF2F8] hover:border-[#EAB8D2] cursor-pointer text-xs font-medium"
-                      >
-                        {copiedKey === debt.order_code ? (
-                          <Check className="size-3.5 text-[#0F766E]" aria-hidden="true" />
-                        ) : (
-                          <Copy className="size-3.5 text-muted-foreground" aria-hidden="true" />
-                        )}
-                        <span>Chép tin nhắn & QR</span>
-                      </Button>
-                      {qrToShow && (
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => void handleCopyReminder(debt.order_code, copyText)}
+                          className="min-h-[38px] flex-1 rounded-lg border-[#EAE0E7] bg-white text-foreground hover:bg-[#FDF2F8] hover:border-[#EAB8D2] cursor-pointer text-xs font-medium"
+                        >
+                          {copiedKey === debt.order_code ? (
+                            <Check className="size-3.5 text-[#0F766E]" aria-hidden="true" />
+                          ) : (
+                            <Copy className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                          )}
+                          <span>Chép tin nhắn & STK</span>
+                        </Button>
                         <Button
                           type="button"
                           variant="outline"
@@ -595,26 +616,26 @@ export const OperationsCopilotPanel = forwardRef<
                         >
                           <QrCode className="size-4 text-primary" />
                         </Button>
-                      )}
-                      {!isSettled && (
-                        <Button
-                          type="button"
-                          disabled={settlingId === debt.id}
-                          onClick={() => void handleSettleDebt(debt.id, debt.order_code)}
-                          className="min-h-[38px] rounded-lg border border-[#A7F3D0] bg-[#ECFDF5] text-[#065F46] hover:bg-[#D1FAE5] cursor-pointer text-xs font-semibold shadow-none"
-                        >
-                          {settlingId === debt.id ? (
-                            <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-                          ) : (
-                            <CheckCircle2 className="size-3.5" aria-hidden="true" />
-                          )}
-                          <span>Xác nhận đã thu</span>
-                        </Button>
-                      )}
+                        {!isSettled && (
+                          <Button
+                            type="button"
+                            disabled={settlingId === debt.id}
+                            onClick={() => void handleSettleDebt(debt.id, debt.order_code)}
+                            className="min-h-[38px] rounded-lg border border-[#A7F3D0] bg-[#ECFDF5] text-[#065F46] hover:bg-[#D1FAE5] cursor-pointer text-xs font-semibold shadow-none"
+                          >
+                            {settlingId === debt.id ? (
+                              <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                            ) : (
+                              <CheckCircle2 className="size-3.5" aria-hidden="true" />
+                            )}
+                            <span>Xác nhận đã thu</span>
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           </section>
         </div>

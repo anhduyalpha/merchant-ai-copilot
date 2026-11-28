@@ -14,6 +14,7 @@ import {
   type OperationsCopilotHandle,
 } from '@/components/copilot/OperationsCopilotPanel';
 import { JudgeDemoBar, type JudgePresetId } from '@/components/demo/JudgeDemoBar';
+import { OrderDetailModal } from '@/components/pos/OrderDetailModal';
 import {
   OrderIntakePanel,
   type OrderIntakeHandle,
@@ -67,6 +68,8 @@ export function MerchantWorkspace() {
   const [health, setHealth] = useState<HealthSnapshot | null>(null);
   const [storeState, setStoreState] = useState<StoreStateSnapshot | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [detailOrderKey, setDetailOrderKey] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const [isResetting, setIsResetting] = useState(false);
   const [activePreset, setActivePreset] = useState<JudgePresetId | null>(null);
@@ -91,8 +94,12 @@ export function MerchantWorkspace() {
       if (storeRes.ok) {
         const s = (await storeRes.json()) as StoreStateSnapshot;
         setStoreState(s);
+        setFetchError(null);
+      } else {
+        setFetchError('Không thể đồng bộ dữ liệu cửa hàng từ cơ sở dữ liệu.');
       }
     } catch {
+      setFetchError('Mất kết nối tới máy chủ cửa hàng.');
       toast.error('Không thể tải dữ liệu quầy.');
     }
   }, []);
@@ -112,10 +119,18 @@ export function MerchantWorkspace() {
         }
         if (storeRes.ok) {
           const s = (await storeRes.json()) as StoreStateSnapshot;
-          if (active) setStoreState(s);
+          if (active) {
+            setStoreState(s);
+            setFetchError(null);
+          }
+        } else if (active) {
+          setFetchError('Không thể đồng bộ dữ liệu cửa hàng từ cơ sở dữ liệu.');
         }
       } catch {
-        if (active) toast.error('Không thể tải dữ liệu quầy.');
+        if (active) {
+          setFetchError('Mất kết nối tới máy chủ cửa hàng.');
+          toast.error('Không thể tải dữ liệu quầy.');
+        }
       }
     })();
     return () => {
@@ -430,6 +445,22 @@ export function MerchantWorkspace() {
       {/* Main Fluid Workspace Viewport */}
       <div className="flex-1 min-w-0 flex flex-col">
         <main className="flex-1 w-full max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-7 py-4 sm:py-5 pb-24 lg:pb-6">
+          {(fetchError || (health && !health.supabase.connected)) && (
+            <div className="mb-4 rounded-xl border border-[#FDE68A] bg-[#FFFBEB] px-4 py-2.5 text-xs text-[#92400E] flex items-center justify-between gap-2">
+              <span>
+                {fetchError ||
+                  'Chưa kết nối được cơ sở dữ liệu Supabase — hãy kiểm tra cấu hình môi trường trước khi lưu đơn.'}
+              </span>
+              <button
+                type="button"
+                onClick={() => void loadWorkspaceData()}
+                className="font-semibold underline hover:text-[#78350F] shrink-0 cursor-pointer"
+              >
+                Thử lại
+              </button>
+            </div>
+          )}
+
           <div className={activeTab === 'pos' ? 'block' : 'hidden'}>
             <OrderIntakePanel
               ref={orderPanelRef}
@@ -440,6 +471,7 @@ export function MerchantWorkspace() {
                 setSelectedOrderId(order.id);
                 setActiveTab('receipt');
               }}
+              onInspectOrderDetail={(key) => setDetailOrderKey(key)}
             />
           </div>
 
@@ -452,6 +484,7 @@ export function MerchantWorkspace() {
               onSelectOrderId={(id) => setSelectedOrderId(id)}
               onVerificationUpdated={loadWorkspaceData}
               onOpenSimulator={() => setSimulatorOpen(true)}
+              onInspectOrderDetail={(key) => setDetailOrderKey(key)}
             />
           </div>
 
@@ -462,6 +495,7 @@ export function MerchantWorkspace() {
               menuItems={storeState?.menuItems ?? []}
               debts={storeState?.customerDebts ?? []}
               onDebtSettled={loadWorkspaceData}
+              onInspectOrderDetail={(key) => setDetailOrderKey(key)}
             />
           </div>
         </main>
@@ -516,6 +550,25 @@ export function MerchantWorkspace() {
         onResetDemo={handleResetDemo}
         isResetting={isResetting}
         activePreset={activePreset}
+      />
+
+      <OrderDetailModal
+        order={
+          detailOrderKey
+            ? (storeState?.orders.find(
+                (o) =>
+                  o.id === detailOrderKey ||
+                  o.order_code.toUpperCase() === detailOrderKey.toUpperCase()
+              ) ?? null)
+            : null
+        }
+        receipts={storeState?.paymentReceipts ?? []}
+        onClose={() => setDetailOrderKey(null)}
+        onOrderUpdated={loadWorkspaceData}
+        onProceedToReceiptVerify={(order) => {
+          setSelectedOrderId(order.id);
+          setActiveTab('receipt');
+        }}
       />
     </div>
   );
